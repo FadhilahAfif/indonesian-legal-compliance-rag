@@ -111,7 +111,7 @@ python -m eval.validate_cases --require-reviewed
 
 Do not use this evaluation set for training.
 
-### Run the M2 retrieval ablation
+### Run the retrieval ablation
 
 With the four historical PDFs in `data/raw/`, compare BM25, dense, hybrid,
 and reranked hybrid retrieval:
@@ -132,13 +132,18 @@ python -m src.rag --methods bm25
 The runner writes `eval/results/retrieval_ablation.json` and
 `eval/results/retrieval_predictions.jsonl`. HyDE and web fallback are disabled.
 
-Current CPU result:
+Current 60-case result:
 
-| Method | Recall@5 | MRR | Source hit rate | Duplicate results |
-| --- | ---: | ---: | ---: | ---: |
-| BM25 | 0.6667 | 0.4744 | 0.8000 | 0 |
+| Method | Recall@5 | MRR | Source hit rate | Abstention accuracy | Mean query latency |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| BM25 | 0.6667 | 0.4744 | 0.8000 | 0.7500 | 0.0067 s |
+| Dense | 0.7556 | **0.6274** | **0.9111** | 0.7500 | 0.0244 s |
+| Hybrid | **0.7778** | 0.6056 | 0.8667 | 0.7500 | 0.0410 s |
+| Hybrid + reranker | 0.7556 | 0.6259 | **0.9111** | **0.8167** | 0.2431 s |
 
-Dense, hybrid, and reranker rows still require the GPU ablation run.
+All methods returned valid metadata and zero duplicate results. Latency covers
+per-query retrieval after indexing and model loading. No method has reached the
+initial Recall@5 target of `0.85`, so parameter calibration remains pending.
 
 ### Run the M1 baseline in Colab
 
