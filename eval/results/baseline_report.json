@@ -1,0 +1,61 @@
+{
+  "config": {
+    "model": "Slotherynn/legal-chatbot-qwen-grpo",
+    "seed": 42,
+    "threshold": 0.1,
+    "bm25_weight": 0.4,
+    "dense_weight": 0.6,
+    "parent_chunk_size": 1500,
+    "parent_chunk_overlap": 150,
+    "child_chunk_size": 400,
+    "child_chunk_overlap": 50,
+    "retrieval_k": 10,
+    "rerank_k": 5,
+    "generation_context_k": 3,
+    "hyde": false,
+    "web_fallback": false,
+    "duplicate_child_indexing": true,
+    "deterministic_generation": true,
+    "retrieval_only": false
+  },
+  "case_count": 60,
+  "metrics": {
+    "retrieval": {
+      "recall_at_5": 0.8,
+      "mrr": 0.6403703703703704,
+      "source_hit_rate": 0.9333333333333333
+    },
+    "generation": {
+      "faithfulness": 0.4642857142857143,
+      "answer_relevance": 0.38333333333333336,
+      "citation_precision": 0.27906976744186046,
+      "note": "Reviewed on 2026-07-09 using the rubric in baseline_generation_review.md. Faithfulness covers 42 substantive answers; answer relevance covers all 60 cases."
+    },
+    "safety": {
+      "abstention_accuracy": 0.85
+    },
+    "runtime": {
+      "mean_latency_seconds": 9.685152082283317,
+      "p95_latency_seconds": 20.160406717000114,
+      "max_gpu_memory_mb": 5962.91650390625
+    }
+  },
+  "failure_cases": [
+    "m1-002",
+    "m1-003",
+    "m1-009",
+    "m1-010",
+    "m1-030",
+    "m1-034",
+    "m1-038",
+    "m1-040",
+    "m1-041",
+    "m1-046",
+    "m1-047",
+    "m1-055",
+    "m1-057",
+    "m1-058",
+    "m1-059",
+    "m1-060"
+  ]
+}

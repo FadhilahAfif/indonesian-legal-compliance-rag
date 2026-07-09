@@ -1,0 +1,26 @@
+{
+  "case_count": 60,
+  "config": {
+    "parent_size": 1500,
+    "parent_overlap": 150,
+    "child_size": 400,
+    "child_overlap": 50,
+    "k": 5,
+    "bm25_weight": 0.4,
+    "threshold": 0.1,
+    "hyde": false,
+    "web_fallback": false,
+    "duplicate_child_indexing": false
+  },
+  "results": {
+    "bm25": {
+      "recall_at_5": 0.6666666666666666,
+      "mrr": 0.4744444444444445,
+      "source_hit_rate": 0.8,
+      "abstention_accuracy": 0.75,
+      "mean_latency_seconds": 0.0054938333380656935,
+      "duplicate_results": 0,
+      "valid_metadata": true
+    }
+  }
+}
