@@ -30,7 +30,8 @@ notebooks/
 ├── Fine_tuning_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── GRPO_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
-└── M1_baseline_evaluation.ipynb
+├── M1_baseline_evaluation.ipynb
+└── M2_retrieval_ablation.ipynb
 docs/
 └── data-sources.md
 data/
@@ -41,7 +42,10 @@ eval/
 scripts/
 └── check_environment.py
 tests/
-└── test_eval_cases.py
+├── test_eval_cases.py
+└── test_rag.py
+src/
+└── rag.py
 requirements.txt
 requirements-training.txt
 ```
@@ -56,6 +60,7 @@ The legal PDF files and generated model artifacts are intentionally not committe
 | GRPO | Reward-based post-training experiment |
 | RAG | Hybrid retrieval, reranking, generation, and study case |
 | M1 baseline | Deterministic benchmark runner for the reviewed evaluation set |
+| M2 retrieval | GPU ablation for BM25, dense, hybrid, and hybrid + reranker |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -106,6 +111,35 @@ python -m eval.validate_cases --require-reviewed
 
 Do not use this evaluation set for training.
 
+### Run the M2 retrieval ablation
+
+With the four historical PDFs in `data/raw/`, compare BM25, dense, hybrid,
+and reranked hybrid retrieval:
+
+```bash
+python -m src.rag --device cuda
+```
+
+For Google Colab, open `notebooks/M2_retrieval_ablation.ipynb`, select a T4
+GPU or better, and run every cell.
+
+For a CPU-only smoke benchmark that does not load embedding models:
+
+```bash
+python -m src.rag --methods bm25
+```
+
+The runner writes `eval/results/retrieval_ablation.json` and
+`eval/results/retrieval_predictions.jsonl`. HyDE and web fallback are disabled.
+
+Current CPU result:
+
+| Method | Recall@5 | MRR | Source hit rate | Duplicate results |
+| --- | ---: | ---: | ---: | ---: |
+| BM25 | 0.6667 | 0.4744 | 0.8000 | 0 |
+
+Dense, hybrid, and reranker rows still require the GPU ablation run.
+
 ### Run the M1 baseline in Colab
 
 Open `notebooks/M1_baseline_evaluation.ipynb`, select a T4 GPU or better, and run every cell. The notebook installs the runtime dependencies, downloads the historical four-document corpus, validates the reviewed cases, and runs:
@@ -114,7 +148,7 @@ Open `notebooks/M1_baseline_evaluation.ipynb`, select a T4 GPU or better, and ru
 python -m eval.run_baseline
 ```
 
-It writes `eval/results/baseline_report.json` and `eval/results/baseline_predictions.jsonl`. Generation faithfulness and answer relevance remain unset until the predictions are reviewed; the runner does not invent proxy scores for them.
+It writes `eval/results/baseline_report.json` and `eval/results/baseline_predictions.jsonl`. The completed review and scoring rubric are stored in `eval/results/baseline_generation_review.md`.
 
 ## Roadmap
 
@@ -128,7 +162,7 @@ It writes `eval/results/baseline_report.json` and `eval/results/baseline_predict
 ## Current Limitations
 
 - The existing SFT and GRPO dataset is general Indonesian instruction data, not a curated legal dataset.
-- The M1 benchmark is still awaiting a baseline run.
+- The M1 baseline has low generation quality: faithfulness `0.4643`, answer relevance `0.3833`, and citation precision `0.2791`.
 - PP Nomor 5 Tahun 2021 is no longer in force, and PP Nomor 51 Tahun 2023 has since been amended; the four-document corpus is a historical evaluation scope, not a statement of current law.
 - The current notebooks are experiments and are not a production legal service.
 

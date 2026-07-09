@@ -1,6 +1,7 @@
 # Local agent instructions
 AGENTS.md
 IMPROVEMENT_PLAN.md
+LEARNINGS.md
 .agents/
 skills-lock.json
 
