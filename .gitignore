@@ -1,0 +1,49 @@
+# Local agent instructions
+AGENTS.md
+IMPROVEMENT_PLAN.md
+.agents/
+skills-lock.json
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Training and experiment outputs
+outputs*/
+wandb/
+runs/
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# RAG artifacts and source documents
+data/raw/
+vectorstore/
+faiss_index/
+*.faiss
+*.pkl
+*.pdf
+
+# Local archives and caches
+*.zip
+.cache/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
