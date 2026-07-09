@@ -29,11 +29,19 @@ The project explores:
 notebooks/
 ├── Fine_tuning_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── GRPO_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
-└── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
+├── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
+└── M1_baseline_evaluation.ipynb
 docs/
 └── data-sources.md
+data/
+└── eval_cases.jsonl
+eval/
+├── run_baseline.py
+└── validate_cases.py
 scripts/
 └── check_environment.py
+tests/
+└── test_eval_cases.py
 requirements.txt
 requirements-training.txt
 ```
@@ -47,6 +55,7 @@ The legal PDF files and generated model artifacts are intentionally not committe
 | Fine-tuning | LoRA supervised fine-tuning of Qwen2.5 3B |
 | GRPO | Reward-based post-training experiment |
 | RAG | Hybrid retrieval, reranking, generation, and study case |
+| M1 baseline | Deterministic benchmark runner for the reviewed evaluation set |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -80,6 +89,33 @@ python scripts/check_environment.py --training
 
 The dependency set uses one compatible LangChain 1.x family. Legacy retrievers are supplied by `langchain-classic`.
 
+## Evaluation Set
+
+M1 currently contains 60 reviewed cases: 45 answerable and 15 unanswerable. Validate their structure and coverage locally:
+
+```bash
+python -m eval.validate_cases
+python -m unittest tests.test_eval_cases -v
+```
+
+The strict gate requires every case to retain its reviewed status:
+
+```bash
+python -m eval.validate_cases --require-reviewed
+```
+
+Do not use this evaluation set for training.
+
+### Run the M1 baseline in Colab
+
+Open `notebooks/M1_baseline_evaluation.ipynb`, select a T4 GPU or better, and run every cell. The notebook installs the runtime dependencies, downloads the historical four-document corpus, validates the reviewed cases, and runs:
+
+```bash
+python -m eval.run_baseline
+```
+
+It writes `eval/results/baseline_report.json` and `eval/results/baseline_predictions.jsonl`. Generation faithfulness and answer relevance remain unset until the predictions are reviewed; the runner does not invent proxy scores for them.
+
 ## Roadmap
 
 1. Build a manually reviewed Indonesian legal QA benchmark.
@@ -92,7 +128,8 @@ The dependency set uses one compatible LangChain 1.x family. Legacy retrievers a
 ## Current Limitations
 
 - The existing SFT and GRPO dataset is general Indonesian instruction data, not a curated legal dataset.
-- Retrieval and generation do not yet have a reproducible benchmark.
+- The M1 benchmark is still awaiting a baseline run.
+- PP Nomor 5 Tahun 2021 is no longer in force, and PP Nomor 51 Tahun 2023 has since been amended; the four-document corpus is a historical evaluation scope, not a statement of current law.
 - The current notebooks are experiments and are not a production legal service.
 
 ## Disclaimer
