@@ -31,7 +31,8 @@ notebooks/
 ├── GRPO_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── M1_baseline_evaluation.ipynb
-└── M2_retrieval_ablation.ipynb
+├── M2_retrieval_ablation.ipynb
+└── retrieval_calibration.ipynb
 docs/
 └── data-sources.md
 data/
@@ -61,6 +62,7 @@ The legal PDF files and generated model artifacts are intentionally not committe
 | RAG | Hybrid retrieval, reranking, generation, and study case |
 | M1 baseline | Deterministic benchmark runner for the reviewed evaluation set |
 | M2 retrieval | GPU ablation for BM25, dense, hybrid, and hybrid + reranker |
+| Retrieval calibration | GPU sweep for candidate depth, fusion weight, and abstention threshold |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -144,6 +146,16 @@ Current 60-case result:
 All methods returned valid metadata and zero duplicate results. Latency covers
 per-query retrieval after indexing and model loading. No method has reached the
 initial Recall@5 target of `0.85`, so parameter calibration remains pending.
+
+### Run retrieval calibration
+
+Open `notebooks/retrieval_calibration.ipynb` in Google Colab, select a T4 GPU
+or better, and run every cell. The default sweep compares candidate depths
+`10`, `20`, and `40`, BM25 weights `0.2`, `0.4`, and `0.6`, then evaluates
+reranker thresholds `0.1`, `0.2`, `0.24`, and `0.3` on the best hybrid setup.
+
+The notebook writes `eval/results/retrieval_calibration.json` and
+`eval/results/retrieval_calibration_predictions.jsonl`.
 
 ### Run the M1 baseline in Colab
 

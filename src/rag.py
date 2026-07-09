@@ -147,6 +147,44 @@ def dense_parent_results(
     )
 
 
+def build_indexes(
+    parents: list[Any],
+    children: list[Any],
+    device: str,
+    candidate_k: int,
+    methods: Iterable[str],
+) -> tuple[Any, Any, Any]:
+    methods = tuple(methods)
+    needs_sparse = any(method != "dense" for method in methods)
+    needs_dense = any(method != "bm25" for method in methods)
+
+    bm25 = None
+    if needs_sparse:
+        from langchain_community.retrievers import BM25Retriever
+
+        bm25 = BM25Retriever.from_documents(parents, k=candidate_k)
+
+    vectorstore = None
+    if needs_dense:
+        from langchain_community.vectorstores import FAISS
+        from langchain_huggingface import HuggingFaceEmbeddings
+
+        embeddings = HuggingFaceEmbeddings(
+            model_name="BAAI/bge-m3",
+            model_kwargs={"device": device},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+        # Child chunks enter the vector index exactly once.
+        vectorstore = FAISS.from_documents(children, embeddings)
+
+    reranker = None
+    if "hybrid_rerank" in methods:
+        from sentence_transformers import CrossEncoder
+
+        reranker = CrossEncoder("BAAI/bge-reranker-base", device=device)
+    return bm25, vectorstore, reranker
+
+
 def retrieve(
     query: str,
     method: str,
@@ -157,8 +195,9 @@ def retrieve(
     reranker: Any = None,
     threshold: float = 0.1,
     bm25_weight: float = 0.4,
+    candidate_k: int | None = None,
 ) -> tuple[list[Any], list[float], str]:
-    candidate_k = max(k * 2, 10)
+    candidate_k = candidate_k if candidate_k is not None else max(k * 2, 10)
     sparse = bm25.invoke(query)[:candidate_k] if bm25 is not None else []
     dense = (
         dense_parent_results(query, vectorstore, parents_by_id or {}, candidate_k)
@@ -298,13 +337,16 @@ def main() -> None:
     parser.add_argument("--child-size", type=int, default=400)
     parser.add_argument("--child-overlap", type=int, default=50)
     parser.add_argument("--k", type=int, default=5)
+    parser.add_argument("--candidate-k", type=int, default=10)
     parser.add_argument("--bm25-weight", type=float, default=0.4)
     parser.add_argument("--threshold", type=float, default=0.1)
     args = parser.parse_args()
+    if args.candidate_k < args.k:
+        parser.error("candidate-k must be greater than or equal to k")
+    if not 0 <= args.bm25_weight <= 1:
+        parser.error("bm25-weight must be between 0 and 1")
 
     from eval.validate_cases import load_cases, validate_cases
-    from langchain_community.retrievers import BM25Retriever
-
     cases = load_cases(args.cases)
     errors = validate_cases(cases, require_reviewed=True)
     if errors:
@@ -319,27 +361,9 @@ def main() -> None:
         args.child_overlap,
     )
     parents_by_id = {document.metadata["chunk_id"]: document for document in parents}
-    needs_sparse = any(method != "dense" for method in args.methods)
-    needs_dense = any(method != "bm25" for method in args.methods)
-    bm25 = BM25Retriever.from_documents(parents, k=max(args.k * 2, 10)) if needs_sparse else None
-    vectorstore = None
-    if needs_dense:
-        from langchain_community.vectorstores import FAISS
-        from langchain_huggingface import HuggingFaceEmbeddings
-
-        embeddings = HuggingFaceEmbeddings(
-            model_name="BAAI/bge-m3",
-            model_kwargs={"device": args.device},
-            encode_kwargs={"normalize_embeddings": True},
-        )
-        # Child chunks enter the vector index exactly once.
-        vectorstore = FAISS.from_documents(children, embeddings)
-
-    reranker = None
-    if "hybrid_rerank" in args.methods:
-        from sentence_transformers import CrossEncoder
-
-        reranker = CrossEncoder("BAAI/bge-reranker-base", device=args.device)
+    bm25, vectorstore, reranker = build_indexes(
+        parents, children, args.device, args.candidate_k, args.methods
+    )
 
     results = {}
     predictions = []
@@ -355,6 +379,7 @@ def main() -> None:
             reranker=reranker,
             threshold=args.threshold,
             bm25_weight=args.bm25_weight,
+            candidate_k=args.candidate_k,
         )
         results[method] = metrics
         predictions.extend(method_predictions)
@@ -367,6 +392,7 @@ def main() -> None:
             "child_size": args.child_size,
             "child_overlap": args.child_overlap,
             "k": args.k,
+            "candidate_k": args.candidate_k,
             "bm25_weight": args.bm25_weight,
             "threshold": args.threshold,
             "hyde": False,
