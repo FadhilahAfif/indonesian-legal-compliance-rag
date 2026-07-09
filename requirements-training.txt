@@ -1,0 +1,19 @@
+-r requirements.txt
+
+# Unsloth 2026.7.2 requires torch <2.11, transformers <=5.5,
+# TRL <=0.24, and datasets <4.4.
+unsloth==2026.7.2
+torchvision==0.25.0
+datasets==4.3.0
+trl==0.24.0
+peft==0.19.1
+
+# Experiment tracking and analysis
+wandb==0.28.0
+huggingface-hub==1.22.0
+rouge-score==0.1.2
+pandas==3.0.3
+numpy==2.5.1
+matplotlib==3.11.0
+sentencepiece==0.2.1
+protobuf==7.35.1

@@ -40,10 +40,10 @@ faiss_index/
 # Local archives and caches
 *.zip
 .cache/
+.tools/
 
 # Editors and operating systems
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-

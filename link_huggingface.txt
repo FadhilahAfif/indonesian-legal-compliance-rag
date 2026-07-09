@@ -1,5 +1,0 @@
-# Fine-Tuning
-https://huggingface.co/Slotherynn/legal-chatbot-qwen-sft
-
-# GRPO
-https://huggingface.co/Slotherynn/legal-chatbot-qwen-grpo

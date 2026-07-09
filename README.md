@@ -2,7 +2,7 @@
 
 An Indonesian legal compliance assistant that retrieves evidence from regulations, reranks relevant passages, and generates answers with verifiable citations.
 
-> **Status:** active portfolio redevelopment. The current repository contains the original training and RAG experiments; evaluation and application code will be added incrementally.
+> **Status:** active engineering redevelopment. The current repository contains the original training and RAG experiments; evaluation and application code will be added incrementally.
 
 ## Scope
 
@@ -30,10 +30,15 @@ notebooks/
 ├── Fine_tuning_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── GRPO_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 └── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
+docs/
+└── data-sources.md
+scripts/
+└── check_environment.py
 requirements.txt
+requirements-training.txt
 ```
 
-The legal PDF files and generated model artifacts are intentionally not committed.
+The legal PDF files and generated model artifacts are intentionally not committed. See [Regulatory Data Sources](docs/data-sources.md) for provenance and corpus rules.
 
 ## Notebooks
 
@@ -50,14 +55,30 @@ The notebooks were developed for a GPU-enabled Google Colab environment.
 - [SFT model](https://huggingface.co/Slotherynn/legal-chatbot-qwen-sft)
 - [GRPO model](https://huggingface.co/Slotherynn/legal-chatbot-qwen-grpo)
 
-## Original Notebook Setup
+## Environment
+
+- Python 3.12
+- Linux
+- NVIDIA CUDA-compatible GPU for model inference
+- NVIDIA T4-class GPU or better for the submitted training configuration
+
+Create the runtime environment:
 
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv
+source .venv/bin/activate
 python -m pip install -r requirements.txt
+python scripts/check_environment.py
 ```
 
-The requirements currently describe the submitted notebook environment and will be normalized during repository redevelopment. CUDA-compatible hardware is required for the original training and inference notebooks.
+Install and validate the training environment only when running SFT or GRPO:
+
+```bash
+python -m pip install -r requirements-training.txt
+python scripts/check_environment.py --training
+```
+
+The dependency set uses one compatible LangChain 1.x family. Legacy retrievers are supplied by `langchain-classic`.
 
 ## Roadmap
 
@@ -76,7 +97,7 @@ The requirements currently describe the submitted notebook environment and will 
 
 ## Disclaimer
 
-This project is for education and portfolio demonstration. Its output is not legal advice and must be verified against official regulations or a qualified legal professional.
+The system is under active development. Its output is not legal advice and must be verified against official regulations or a qualified legal professional.
 
 ## License
 
