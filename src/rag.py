@@ -24,6 +24,10 @@ TOPIC_BY_REGULATION = {
 }
 REQUIRED_METADATA = {"regulation", "source", "page", "article", "topic", "chunk_id"}
 ARTICLE_PATTERN = re.compile(r"\bPasal\s+(\d+(?:\s+\d+)?[A-Z]?)\b", re.IGNORECASE)
+REGULATION_PATTERN = re.compile(
+    r"\b(PP|UU)\s+(?:(?:Nomor|No\.?)\s+)?(\d+)\s+Tahun\s+(\d{4})\b",
+    re.IGNORECASE,
+)
 
 
 def extract_articles(text: str) -> str | None:
@@ -200,6 +204,13 @@ def retrieve(
     bm25_weight: float = 0.4,
     candidate_k: int | None = None,
 ) -> tuple[list[Any], list[float], str]:
+    mentioned_regulations = {
+        f"{kind.upper()} Nomor {number} Tahun {year}"
+        for kind, number, year in REGULATION_PATTERN.findall(query)
+    }
+    if not mentioned_regulations <= TOPIC_BY_REGULATION.keys():
+        return [], [], "insufficient_context"
+
     candidate_k = candidate_k if candidate_k is not None else max(k * 2, 10)
     sparse = bm25.invoke(query)[:candidate_k] if bm25 is not None else []
     dense = (
@@ -398,6 +409,7 @@ def main() -> None:
             "candidate_k": args.candidate_k,
             "bm25_weight": args.bm25_weight,
             "threshold": args.threshold,
+            "scope_guard": True,
             "hyde": False,
             "web_fallback": False,
             "duplicate_child_indexing": False,

@@ -32,7 +32,8 @@ notebooks/
 ├── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── M1_baseline_evaluation.ipynb
 ├── M2_retrieval_ablation.ipynb
-└── retrieval_calibration.ipynb
+├── retrieval_calibration.ipynb
+└── retrieval_validation.ipynb
 docs/
 └── data-sources.md
 data/
@@ -63,6 +64,7 @@ The legal PDF files and generated model artifacts are intentionally not committe
 | M1 baseline | Deterministic benchmark runner for the reviewed evaluation set |
 | M2 retrieval | GPU ablation for BM25, dense, hybrid, and hybrid + reranker |
 | Retrieval calibration | GPU sweep for candidate depth, fusion weight, and abstention threshold |
+| Retrieval validation | GPU validation of the selected configuration and scope guard |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -162,12 +164,20 @@ Current calibration result:
 
 | Configuration | Candidate depth | BM25 weight | Threshold | Recall@5 | MRR | Source hit rate | Abstention accuracy | Mean query latency |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Best hybrid | 20 | 0.2 | - | **0.8222** | 0.6119 | **0.9111** | 0.7500 | 0.0292 s |
-| Best hybrid + reranker | 20 | 0.2 | 0.24 | **0.8222** | **0.6504** | 0.8889 | **0.8333** | 0.4387 s |
+| Best hybrid | 10 | 0.4 | - | **0.8444** | 0.6507 | 0.8889 | 0.7500 | 0.0320 s |
+| Best hybrid + reranker | 10 | 0.4 | 0.30 | **0.8444** | **0.6637** | **0.9111** | **0.8667** | 0.1909 s |
 
-The recorded result above predates the chunk sweep: calibration improved
-Recall@5 from `0.7778` to `0.8222`, but still misses the target of `0.85`.
-Run the updated notebook before moving to grounded generation.
+The best configuration uses parent chunks `1000/100` and child chunks
+`300/30` (size/overlap). Calibration improved exact-page Recall@5 from
+`0.8222` to `0.8444`, one hit short of the next attainable score (`39/45 =
+0.8667`). The reranked setup meets the source hit and abstention targets,
+returns valid metadata, and has zero duplicate results. Retrieval remains open
+while the seven exact-page misses are reviewed without changing the frozen
+evaluation set to fit observed predictions.
+
+For the final retrieval check after code changes, run
+`notebooks/retrieval_validation.ipynb`. It evaluates only the selected
+configuration, so it does not repeat the full calibration sweep.
 
 ### Run the M1 baseline in Colab
 

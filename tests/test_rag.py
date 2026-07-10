@@ -104,6 +104,20 @@ class RagTest(unittest.TestCase):
         self.assertEqual(vectorstore.k, 7)
         self.assertEqual(documents, [parent])
 
+    def test_unsupported_explicit_regulation_abstains_before_retrieval(self) -> None:
+        class VectorStore:
+            def similarity_search(self, query: str, k: int) -> list[Document]:
+                raise AssertionError("out-of-scope queries must not reach retrieval")
+
+        documents, scores, status = retrieve(
+            "Apa ketentuan terbaru menurut PP Nomor 28 Tahun 2025?",
+            "dense",
+            5,
+            vectorstore=VectorStore(),
+        )
+
+        self.assertEqual((documents, scores, status), ([], [], "insufficient_context"))
+
     def test_build_indexes_reuses_provided_embeddings(self) -> None:
         parent = Document(page_content="parent", metadata={"chunk_id": "parent"})
         child = Document(page_content="child", metadata={"parent_id": "parent"})

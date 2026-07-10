@@ -216,6 +216,7 @@ def main() -> None:
         "case_count": len(cases),
         "fixed_config": {
             "k": args.k,
+            "scope_guard": True,
             "hyde": False,
             "web_fallback": False,
         },
