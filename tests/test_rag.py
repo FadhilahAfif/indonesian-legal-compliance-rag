@@ -5,9 +5,13 @@ import unittest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from eval.run_grounded import calculate_metrics as calculate_grounded_metrics
+from eval.run_grounded import (
+    calculate_metrics as calculate_grounded_metrics,
+    format_gate_passes,
+)
 from eval.retrieval_calibration import parse_chunk_config, threshold_metrics
 from src.rag import (
+    GroundedOutputError,
     REQUIRED_METADATA,
     build_chunks,
     build_generation_messages,
@@ -153,25 +157,36 @@ class RagTest(unittest.TestCase):
         )
 
         messages = build_generation_messages(injection, [document])
-        payload = json.loads(messages[1]["content"])
+        trusted_instruction, payload_text = messages[1]["content"].split(
+            "DATA_JSON:\n", 1
+        )
+        payload = json.loads(payload_text)
 
         self.assertNotIn(injection, messages[0]["content"])
+        self.assertNotIn(injection, trusted_instruction)
         self.assertEqual(payload["question"], injection)
         self.assertEqual(payload["sources"][0]["text"], injection)
+        self.assertEqual(messages[2], {"role": "assistant", "content": '{"status":'})
 
     def test_grounded_answer_requires_claim_citations_and_verbatim_quotes(self) -> None:
         document = self.pages[0]
         raw_answer = json.dumps(
             {
                 "status": "answer",
-                "short_answer": {"text": "Usaha ini berisiko rendah.", "citations": ["S1"]},
-                "legal_basis": [
-                    {"text": "Pasal 10 mengatur risiko rendah.", "citations": ["S1"]}
+                "claims": [
+                    {
+                        "section": "short_answer",
+                        "text": "Usaha ini berisiko rendah.",
+                        "citations": ["S1"],
+                    },
+                    {
+                        "section": "legal_basis",
+                        "text": "Pasal 10 mengatur risiko rendah.",
+                        "citations": ["S1"],
+                    },
                 ],
-                "application": [],
-                "practical_steps": [],
                 "limitations": ["Konteks tidak memuat jenis usaha tertentu."],
-                "supporting_quotes": [
+                "quotes": [
                     {
                         "source_id": "S1",
                         "quote": "Pasal 10 Kegiatan usaha berisiko rendah.",
@@ -196,6 +211,13 @@ class RagTest(unittest.TestCase):
         unknown_source = raw_answer.replace('"S1"', '"S9"')
         with self.assertRaisesRegex(ValueError, "source IDs"):
             parse_grounded_answer(unknown_source, [document])
+        with self.assertRaisesRegex(ValueError, "abstention"):
+            parse_grounded_answer(
+                json.dumps(
+                    {"status": "insufficient_context", "reasoning": "Tidak ditampilkan"}
+                ),
+                [document],
+            )
 
     def test_generation_is_deterministic_and_abstains_without_documents(self) -> None:
         import torch
@@ -203,14 +225,20 @@ class RagTest(unittest.TestCase):
         raw_answer = json.dumps(
             {
                 "status": "answer",
-                "short_answer": {"text": "Usaha ini berisiko rendah.", "citations": ["S1"]},
-                "legal_basis": [
-                    {"text": "Pasal 10 mengatur risiko rendah.", "citations": ["S1"]}
+                "claims": [
+                    {
+                        "section": "short_answer",
+                        "text": "Usaha ini berisiko rendah.",
+                        "citations": ["S1"],
+                    },
+                    {
+                        "section": "legal_basis",
+                        "text": "Pasal 10 mengatur risiko rendah.",
+                        "citations": ["S1"],
+                    },
                 ],
-                "application": [],
-                "practical_steps": [],
                 "limitations": [],
-                "supporting_quotes": [
+                "quotes": [
                     {
                         "source_id": "S1",
                         "quote": "Pasal 10 Kegiatan usaha berisiko rendah.",
@@ -227,13 +255,14 @@ class RagTest(unittest.TestCase):
             pad_token_id = 0
 
             def apply_chat_template(self, *args: object, **kwargs: object) -> str:
+                self.chat_kwargs = kwargs
                 return "prompt"
 
             def __call__(self, *args: object, **kwargs: object) -> Encoding:
                 return Encoding(input_ids=torch.tensor([[1, 2]]))
 
             def decode(self, *args: object, **kwargs: object) -> str:
-                return raw_answer
+                return raw_answer[len('{"status":') :]
 
         class Model:
             def parameters(self):
@@ -247,14 +276,54 @@ class RagTest(unittest.TestCase):
                 return torch.tensor([[1, 2, 3]])
 
         model = Model()
-        answer = generate_grounded_answer("Apa risikonya?", self.pages, model, Tokenizer())
+        tokenizer = Tokenizer()
+        answer = generate_grounded_answer("Apa risikonya?", self.pages, model, tokenizer)
 
         self.assertEqual(answer["status"], "answer")
         self.assertFalse(model.kwargs["do_sample"])
+        self.assertTrue(tokenizer.chat_kwargs["continue_final_message"])
+        self.assertNotIn("add_generation_prompt", tokenizer.chat_kwargs)
         self.assertEqual(
             generate_grounded_answer("Apa risikonya?", [], None, None)["status"],
             "insufficient_context",
         )
+
+    def test_invalid_generation_reports_safe_termination_diagnostics(self) -> None:
+        import torch
+
+        class Encoding(dict):
+            def to(self, device: torch.device) -> "Encoding":
+                return self
+
+        class Tokenizer:
+            pad_token_id = eos_token_id = 0
+
+            def apply_chat_template(self, *args: object, **kwargs: object) -> str:
+                return "prompt"
+
+            def __call__(self, *args: object, **kwargs: object) -> Encoding:
+                return Encoding(input_ids=torch.tensor([[1, 2]]))
+
+            def decode(self, *args: object, **kwargs: object) -> str:
+                return '"answer"'
+
+        class Model:
+            def parameters(self):
+                return iter([torch.tensor(0)])
+
+            def eval(self) -> None:
+                pass
+
+            def generate(self, **kwargs: object) -> torch.Tensor:
+                return torch.zeros((1, 514), dtype=torch.long)
+
+        with self.assertRaises(GroundedOutputError) as raised:
+            generate_grounded_answer("Apa risikonya?", self.pages, Model(), Tokenizer())
+
+        diagnostics = raised.exception.diagnostics
+        self.assertTrue(diagnostics["hit_token_limit"])
+        self.assertEqual(diagnostics["generated_token_count"], 512)
+        self.assertNotIn("raw_output", diagnostics)
 
     def test_grounded_metrics_count_retrieval_citations_and_invalid_outputs(self) -> None:
         predictions = [
@@ -262,6 +331,7 @@ class RagTest(unittest.TestCase):
                 "answerable": True,
                 "regulation": ["PP Nomor 5 Tahun 2021"],
                 "page": [1],
+                "retrieval_status": "answer",
                 "status": "answer",
                 "retrieved": [
                     {"regulation": "PP Nomor 5 Tahun 2021", "page": 1}
@@ -276,6 +346,7 @@ class RagTest(unittest.TestCase):
                 "answerable": False,
                 "regulation": [],
                 "page": [],
+                "retrieval_status": "insufficient_context",
                 "status": "insufficient_context",
                 "retrieved": [],
                 "citations": [],
@@ -286,6 +357,7 @@ class RagTest(unittest.TestCase):
                 "answerable": True,
                 "regulation": ["PP Nomor 35 Tahun 2021"],
                 "page": [2],
+                "retrieval_status": "answer",
                 "status": "invalid_output",
                 "retrieved": [],
                 "citations": [],
@@ -298,10 +370,17 @@ class RagTest(unittest.TestCase):
 
         self.assertEqual(metrics["retrieval"]["recall_at_5"], 0.5)
         self.assertEqual(metrics["generation"]["citation_precision"], 1.0)
-        self.assertEqual(metrics["generation"]["valid_output_rate"], 2 / 3)
+        self.assertEqual(metrics["generation"]["valid_output_rate"], 0.5)
         self.assertIsNone(metrics["generation"]["faithfulness"])
         self.assertEqual(metrics["safety"]["abstention_accuracy"], 2 / 3)
         self.assertEqual(metrics["runtime"]["mean_latency_seconds"], 2.0)
+        self.assertTrue(format_gate_passes(predictions[:2]))
+        self.assertFalse(format_gate_passes(predictions))
+        self.assertIsNone(
+            calculate_grounded_metrics(predictions[1:])["generation"][
+                "citation_precision"
+            ]
+        )
 
 
 if __name__ == "__main__":

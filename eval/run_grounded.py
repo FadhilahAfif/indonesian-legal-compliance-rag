@@ -13,6 +13,7 @@ from typing import Any
 
 from eval.run_baseline import load_cases, matches_reference
 from src.rag import (
+    GroundedOutputError,
     build_chunks,
     build_indexes,
     document_reference,
@@ -21,6 +22,15 @@ from src.rag import (
     load_documents,
     retrieve,
 )
+
+
+def format_gate_passes(predictions: list[dict[str, Any]]) -> bool:
+    attempts = [
+        item for item in predictions if item["retrieval_status"] == "answer"
+    ]
+    return bool(attempts) and all(
+        item["status"] in {"answer", "insufficient_context"} for item in attempts
+    )
 
 
 def calculate_metrics(predictions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -41,6 +51,9 @@ def calculate_metrics(predictions: list[dict[str, Any]]) -> dict[str, Any]:
 
     citations = [
         citation for item in predictions for citation in item.get("citations", [])
+    ]
+    generation_attempts = [
+        item for item in predictions if item["retrieval_status"] == "answer"
     ]
     latencies = [item["latency_seconds"] for item in predictions]
     sorted_latencies = sorted(latencies)
@@ -63,11 +76,14 @@ def calculate_metrics(predictions: list[dict[str, Any]]) -> dict[str, Any]:
             )
             / len(citations)
             if citations
-            else 0,
+            else None,
+            "attempt_count": len(generation_attempts),
             "valid_output_rate": sum(
-                item["status"] in valid_statuses for item in predictions
+                item["status"] in valid_statuses for item in generation_attempts
             )
-            / len(predictions),
+            / len(generation_attempts)
+            if generation_attempts
+            else None,
             "note": "Faithfulness and answer relevance require manual review.",
         },
         "safety": {
@@ -121,7 +137,10 @@ def main() -> None:
     )
     parser.add_argument("--model", default="Qwen/Qwen2.5-3B-Instruct")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--format-gate-cases", type=int, default=5)
     args = parser.parse_args()
+    if args.format_gate_cases < 0:
+        parser.error("format-gate-cases must be non-negative")
 
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     import torch
@@ -143,6 +162,7 @@ def main() -> None:
     model, tokenizer = load_generator(args.model)
 
     predictions = []
+    format_gate_passed = None
     for index, case in enumerate(cases, 1):
         print(f"[{index}/{len(cases)}] {case['id']}", flush=True)
         torch.cuda.reset_peak_memory_stats()
@@ -164,6 +184,7 @@ def main() -> None:
             for position, document in enumerate(documents)
         ]
         error = None
+        diagnostics = None
         if retrieval_status == "insufficient_context":
             answer = insufficient_context_answer()
         else:
@@ -171,9 +192,10 @@ def main() -> None:
                 answer = generate_grounded_answer(
                     case["question"], documents, model, tokenizer
                 )
-            except ValueError as exception:
+            except GroundedOutputError as exception:
                 answer = None
                 error = str(exception)
+                diagnostics = exception.diagnostics
         status = answer["status"] if answer else "invalid_output"
         predictions.append(
             {
@@ -182,12 +204,18 @@ def main() -> None:
                 "status": status,
                 "answer": answer,
                 "error": error,
+                "generation_diagnostics": diagnostics,
                 "retrieved": references,
                 "citations": answer.get("citations", []) if answer else [],
                 "latency_seconds": time.perf_counter() - started,
                 "gpu_peak_memory_mb": torch.cuda.max_memory_allocated() / 1024**2,
             }
         )
+        if args.format_gate_cases and index == args.format_gate_cases:
+            format_gate_passed = format_gate_passes(predictions)
+            if not format_gate_passed:
+                print("Format gate failed; stopping before the full benchmark.", flush=True)
+                break
 
     metrics = calculate_metrics(predictions)
     failures = [
@@ -218,8 +246,11 @@ def main() -> None:
             "deterministic_generation": True,
             "hyde": False,
             "web_fallback": False,
+            "format_gate_cases": args.format_gate_cases,
         },
+        "requested_case_count": len(cases),
         "case_count": len(predictions),
+        "format_gate_passed": format_gate_passed,
         "metrics": metrics,
         "failure_cases": failures,
     }

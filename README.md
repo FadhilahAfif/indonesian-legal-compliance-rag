@@ -217,6 +217,10 @@ downloads the historical corpus, and runs:
 python -m eval.run_grounded
 ```
 
+The runner uses the first five cases as a format gate. It continues to all 60
+cases only when every attempted generation returns a valid grounded schema;
+otherwise it saves the partial diagnostics and stops early.
+
 Download `grounded_report.json` and `grounded_predictions.jsonl` from the final
 cell. The report calculates retrieval, citation precision, output validity,
 abstention, latency, and VRAM. Faithfulness and answer relevance remain unset
@@ -246,6 +250,7 @@ It writes `eval/results/baseline_report.json` and `eval/results/baseline_predict
 
 - The existing SFT and GRPO dataset is general Indonesian instruction data, not a curated legal dataset.
 - The M1 baseline has low generation quality: faithfulness `0.4643`, answer relevance `0.3833`, and citation precision `0.2791`.
+- The first grounded-generation run produced `43/43` invalid model outputs; a simplified schema, JSON prefill, safe termination diagnostics, and a five-case format gate now await GPU validation.
 - PP Nomor 5 Tahun 2021 is no longer in force, and PP Nomor 51 Tahun 2023 has since been amended; the four-document corpus is a historical evaluation scope, not a statement of current law.
 - The current notebooks are experiments and are not a production legal service.
 
