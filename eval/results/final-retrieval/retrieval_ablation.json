@@ -1,0 +1,28 @@
+{
+  "case_count": 60,
+  "config": {
+    "parent_size": 1000,
+    "parent_overlap": 100,
+    "child_size": 300,
+    "child_overlap": 30,
+    "k": 5,
+    "candidate_k": 10,
+    "bm25_weight": 0.4,
+    "threshold": 0.3,
+    "scope_guard": true,
+    "hyde": false,
+    "web_fallback": false,
+    "duplicate_child_indexing": false
+  },
+  "results": {
+    "hybrid_rerank": {
+      "recall_at_5": 0.8444444444444444,
+      "mrr": 0.6637037037037037,
+      "source_hit_rate": 0.9111111111111111,
+      "abstention_accuracy": 0.9,
+      "mean_latency_seconds": 0.16678950258333505,
+      "duplicate_results": 0,
+      "valid_metadata": true
+    }
+  }
+}
