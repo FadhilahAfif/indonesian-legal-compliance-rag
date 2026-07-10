@@ -112,6 +112,7 @@ Bandingkan perubahan terhadap baseline yang sama. Pertahankan fitur hanya jika h
 - Gunakan perintah proyek yang sudah didokumentasikan; jangan menambah tooling hanya untuk mengikuti kebiasaan.
 - Untuk bug atau logika baru, tinggalkan tes terkecil yang gagal sebelum perbaikan dan lolos setelahnya.
 - Jika validasi membutuhkan GPU, model, atau data yang tidak tersedia lokal, buat notebook Google Colab minimal yang dapat dijalankan pengguna. Notebook harus memanggil kode proyek tanpa menduplikasi logika, memvalidasi environment dan input, menjalankan tes atau benchmark terkait, serta menyediakan artefak hasil untuk diunduh.
+- Sebelum meminta pengguna menjalankan notebook Google Colab, commit dan push notebook beserta seluruh perubahan kode yang dipanggilnya setidaknya ke working branch, lalu verifikasi branch remote tersebut tersedia.
 - Sebelum menyelesaikan milestone, jalankan ulang benchmark penuh pada environment bersih.
 - Jika validasi tidak dapat dijalankan karena GPU, model, atau data tidak tersedia, laporkan batasan tersebut dan jangan mengklaim keberhasilan.
 

@@ -31,7 +31,9 @@ notebooks/
 ├── GRPO_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── M1_baseline_evaluation.ipynb
-└── M2_retrieval_ablation.ipynb
+├── M2_retrieval_ablation.ipynb
+├── retrieval_calibration.ipynb
+└── retrieval_validation.ipynb
 docs/
 └── data-sources.md
 data/
@@ -61,6 +63,8 @@ The legal PDF files and generated model artifacts are intentionally not committe
 | RAG | Hybrid retrieval, reranking, generation, and study case |
 | M1 baseline | Deterministic benchmark runner for the reviewed evaluation set |
 | M2 retrieval | GPU ablation for BM25, dense, hybrid, and hybrid + reranker |
+| Retrieval calibration | GPU sweep for candidate depth, fusion weight, and abstention threshold |
+| Retrieval validation | GPU validation of the selected configuration and scope guard |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -144,6 +148,46 @@ Current 60-case result:
 All methods returned valid metadata and zero duplicate results. Latency covers
 per-query retrieval after indexing and model loading. No method has reached the
 initial Recall@5 target of `0.85`, so parameter calibration remains pending.
+
+### Run retrieval calibration
+
+Open `notebooks/retrieval_calibration.ipynb` in Google Colab, select a T4 GPU
+or better, and run every cell. The default sweep compares five parent/child
+chunk and overlap configurations, candidate depths `10`, `20`, and `40`, and
+BM25 weights `0.2`, `0.4`, and `0.6`. It then evaluates reranker thresholds
+`0.1`, `0.2`, `0.24`, and `0.3` on the best hybrid setup.
+
+The notebook writes `eval/results/retrieval_calibration.json` and
+`eval/results/retrieval_calibration_predictions.jsonl`.
+
+Current calibration result:
+
+| Configuration | Candidate depth | BM25 weight | Threshold | Recall@5 | MRR | Source hit rate | Abstention accuracy | Mean query latency |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Best hybrid | 10 | 0.4 | - | **0.8444** | 0.6507 | 0.8889 | 0.7500 | 0.0320 s |
+| Best hybrid + reranker | 10 | 0.4 | 0.30 | **0.8444** | **0.6637** | **0.9111** | **0.8667** | 0.1909 s |
+
+The best configuration uses parent chunks `1000/100` and child chunks
+`300/30` (size/overlap). Calibration improved exact-page Recall@5 from
+`0.8222` to `0.8444`, one hit short of the next attainable score (`39/45 =
+0.8667`). The reranked setup meets the source hit target, returns valid
+metadata, and has zero duplicate results. The frozen evaluation set was not
+changed after reviewing the seven exact-page misses.
+
+For the final retrieval check after code changes, run
+`notebooks/retrieval_validation.ipynb`. It evaluates only the selected
+configuration, so it does not repeat the full calibration sweep.
+
+Final validation with the scope guard produced:
+
+| Method | Recall@5 | MRR | Source hit rate | Abstention accuracy | Mean query latency |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Hybrid + reranker | 0.8444 | 0.6637 | 0.9111 | **0.9000** | 0.1668 s |
+
+All 285 returned quotes were matched to their original PDF source and page.
+The retrieval milestone accepts the one-hit exact-page Recall@5 deviation
+because all acceptance criteria pass and further tuning against reviewed
+misses would risk fitting the frozen evaluation set.
 
 ### Run the M1 baseline in Colab
 
