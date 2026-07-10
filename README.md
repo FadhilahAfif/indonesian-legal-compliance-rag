@@ -250,7 +250,7 @@ It writes `eval/results/baseline_report.json` and `eval/results/baseline_predict
 
 - The existing SFT and GRPO dataset is general Indonesian instruction data, not a curated legal dataset.
 - The M1 baseline has low generation quality: faithfulness `0.4643`, answer relevance `0.3833`, and citation precision `0.2791`.
-- The first grounded-generation run produced `43/43` invalid model outputs; a simplified schema, JSON prefill, safe termination diagnostics, and a five-case format gate now await GPU validation.
+- The first grounded-generation run produced `43/43` invalid model outputs. JSON prefill then produced the expected top-level schema in `3/4` attempted gate cases without hitting the token limit; enriched content-free diagnostics now await a second five-case gate run.
 - PP Nomor 5 Tahun 2021 is no longer in force, and PP Nomor 51 Tahun 2023 has since been amended; the four-document corpus is a historical evaluation scope, not a statement of current law.
 - The current notebooks are experiments and are not a production legal service.
 

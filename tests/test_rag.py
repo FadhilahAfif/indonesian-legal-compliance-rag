@@ -298,6 +298,9 @@ class RagTest(unittest.TestCase):
         class Tokenizer:
             pad_token_id = eos_token_id = 0
 
+            def __init__(self, decoded: str):
+                self.decoded = decoded
+
             def apply_chat_template(self, *args: object, **kwargs: object) -> str:
                 return "prompt"
 
@@ -305,9 +308,12 @@ class RagTest(unittest.TestCase):
                 return Encoding(input_ids=torch.tensor([[1, 2]]))
 
             def decode(self, *args: object, **kwargs: object) -> str:
-                return '"answer"'
+                return self.decoded
 
         class Model:
+            def __init__(self, output_length: int):
+                self.output_length = output_length
+
             def parameters(self):
                 return iter([torch.tensor(0)])
 
@@ -315,15 +321,61 @@ class RagTest(unittest.TestCase):
                 pass
 
             def generate(self, **kwargs: object) -> torch.Tensor:
-                return torch.zeros((1, 514), dtype=torch.long)
+                return torch.zeros((1, self.output_length), dtype=torch.long)
 
         with self.assertRaises(GroundedOutputError) as raised:
-            generate_grounded_answer("Apa risikonya?", self.pages, Model(), Tokenizer())
+            generate_grounded_answer(
+                "Apa risikonya?", self.pages, Model(514), Tokenizer('"answer"')
+            )
 
         diagnostics = raised.exception.diagnostics
         self.assertTrue(diagnostics["hit_token_limit"])
         self.assertEqual(diagnostics["generated_token_count"], 512)
+        self.assertEqual(diagnostics["json_error"]["position"], 18)
         self.assertNotIn("raw_output", diagnostics)
+
+        short_text = "Usaha ini berisiko rendah."
+        long_text = "x" * 301
+        quote = "Pasal 10 Kegiatan usaha berisiko rendah."
+        structured = json.dumps(
+            {
+                "status": "answer",
+                "claims": [
+                    {
+                        "section": "short_answer",
+                        "text": short_text,
+                        "citations": ["S1"],
+                    },
+                    {
+                        "section": "legal_basis",
+                        "text": long_text,
+                        "citations": ["S1"],
+                    },
+                ],
+                "limitations": [],
+                "quotes": [{"source_id": "S1", "quote": quote}],
+            }
+        )
+        with self.assertRaises(GroundedOutputError) as raised:
+            generate_grounded_answer(
+                "Apa risikonya?",
+                self.pages,
+                Model(7),
+                Tokenizer(structured[len('{"status":') :]),
+            )
+
+        diagnostics = raised.exception.diagnostics
+        self.assertIsNone(diagnostics["json_error"])
+        self.assertEqual(
+            diagnostics["claim_sections"], ["short_answer", "legal_basis"]
+        )
+        self.assertEqual(
+            diagnostics["claim_text_lengths"], [len(short_text), len(long_text)]
+        )
+        self.assertEqual(diagnostics["claim_citation_counts"], [1, 1])
+        self.assertEqual(diagnostics["quote_lengths"], [len(quote)])
+        self.assertEqual(diagnostics["quote_source_ids"], ["S1"])
+        self.assertEqual(diagnostics["quote_matches_source"], [True])
 
     def test_grounded_metrics_count_retrieval_citations_and_invalid_outputs(self) -> None:
         predictions = [

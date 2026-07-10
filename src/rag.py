@@ -456,12 +456,35 @@ def parse_grounded_answer(raw_answer: str, documents: list[Any]) -> dict[str, An
 
 
 def _generation_diagnostics(
-    raw_answer: str, generated_token_count: int
+    raw_answer: str, generated_token_count: int, documents: list[Any]
 ) -> dict[str, Any]:
+    json_error = None
     try:
         parsed = json.loads(raw_answer)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as error:
         parsed = None
+        json_error = {
+            "message": error.msg,
+            "position": error.pos,
+            "line": error.lineno,
+            "column": error.colno,
+        }
+    claims = parsed.get("claims", []) if isinstance(parsed, dict) else []
+    if not isinstance(claims, list):
+        claims = []
+    quotes = parsed.get("quotes", []) if isinstance(parsed, dict) else []
+    if not isinstance(quotes, list):
+        quotes = []
+    source_text = {
+        f"S{index}": " ".join(document.page_content.split()).casefold()
+        for index, document in enumerate(documents[:MAX_GENERATION_SOURCES], 1)
+    }
+    valid_sections = {
+        "short_answer",
+        "legal_basis",
+        "application",
+        "practical_steps",
+    }
     return {
         "generated_token_count": generated_token_count,
         "hit_token_limit": generated_token_count >= MAX_GENERATION_TOKENS,
@@ -469,6 +492,45 @@ def _generation_diagnostics(
         "starts_with_object": raw_answer.lstrip().startswith("{"),
         "ends_with_object": raw_answer.rstrip().endswith("}"),
         "parsed_top_level_keys": sorted(parsed) if isinstance(parsed, dict) else None,
+        "json_error": json_error,
+        "claim_sections": [
+            item.get("section")
+            if isinstance(item, dict) and item.get("section") in valid_sections
+            else "invalid"
+            for item in claims
+        ],
+        "claim_text_lengths": [
+            len(item.get("text", ""))
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+            else None
+            for item in claims
+        ],
+        "claim_citation_counts": [
+            len(item.get("citations", []))
+            if isinstance(item, dict) and isinstance(item.get("citations"), list)
+            else None
+            for item in claims
+        ],
+        "quote_lengths": [
+            len(item.get("quote", ""))
+            if isinstance(item, dict) and isinstance(item.get("quote"), str)
+            else None
+            for item in quotes
+        ],
+        "quote_source_ids": [
+            item.get("source_id")
+            if isinstance(item, dict) and item.get("source_id") in source_text
+            else "invalid"
+            for item in quotes
+        ],
+        "quote_matches_source": [
+            isinstance(item, dict)
+            and item.get("source_id") in source_text
+            and isinstance(item.get("quote"), str)
+            and " ".join(item["quote"].split()).casefold()
+            in source_text[item["source_id"]]
+            for item in quotes
+        ],
         "contains_internal_reasoning_marker": "<think>" in raw_answer.casefold(),
     }
 
@@ -513,7 +575,9 @@ def generate_grounded_answer(
     except ValueError as error:
         raise GroundedOutputError(
             str(error),
-            _generation_diagnostics(raw_answer, output.shape[1] - input_length),
+            _generation_diagnostics(
+                raw_answer, output.shape[1] - input_length, evidence
+            ),
         ) from error
 
 
