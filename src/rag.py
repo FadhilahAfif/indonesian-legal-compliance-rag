@@ -153,6 +153,7 @@ def build_indexes(
     device: str,
     candidate_k: int,
     methods: Iterable[str],
+    embeddings: Any = None,
 ) -> tuple[Any, Any, Any]:
     methods = tuple(methods)
     needs_sparse = any(method != "dense" for method in methods)
@@ -167,13 +168,15 @@ def build_indexes(
     vectorstore = None
     if needs_dense:
         from langchain_community.vectorstores import FAISS
-        from langchain_huggingface import HuggingFaceEmbeddings
 
-        embeddings = HuggingFaceEmbeddings(
-            model_name="BAAI/bge-m3",
-            model_kwargs={"device": device},
-            encode_kwargs={"normalize_embeddings": True},
-        )
+        if embeddings is None:
+            from langchain_huggingface import HuggingFaceEmbeddings
+
+            embeddings = HuggingFaceEmbeddings(
+                model_name="BAAI/bge-m3",
+                model_kwargs={"device": device},
+                encode_kwargs={"normalize_embeddings": True},
+            )
         # Child chunks enter the vector index exactly once.
         vectorstore = FAISS.from_documents(children, embeddings)
 

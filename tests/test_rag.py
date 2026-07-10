@@ -1,11 +1,14 @@
+import argparse
 import unittest
 
 from langchain_core.documents import Document
+from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from eval.retrieval_calibration import threshold_metrics
+from eval.retrieval_calibration import parse_chunk_config, threshold_metrics
 from src.rag import (
     REQUIRED_METADATA,
     build_chunks,
+    build_indexes,
     deduplicate_documents,
     normalize_documents,
     reciprocal_rank_fusion,
@@ -74,6 +77,11 @@ class RagTest(unittest.TestCase):
         self.assertEqual(metrics["true_positives"], 1)
         self.assertEqual(metrics["true_negatives"], 1)
 
+    def test_chunk_config_rejects_overlap_not_smaller_than_size(self) -> None:
+        self.assertEqual(parse_chunk_config("1500:150:400:50"), (1500, 150, 400, 50))
+        with self.assertRaises(argparse.ArgumentTypeError):
+            parse_chunk_config("1500:1500:400:50")
+
     def test_dense_retrieval_uses_configured_candidate_depth(self) -> None:
         parent = Document(page_content="parent", metadata={"chunk_id": "parent"})
         child = Document(page_content="child", metadata={"parent_id": "parent"})
@@ -95,6 +103,21 @@ class RagTest(unittest.TestCase):
 
         self.assertEqual(vectorstore.k, 7)
         self.assertEqual(documents, [parent])
+
+    def test_build_indexes_reuses_provided_embeddings(self) -> None:
+        parent = Document(page_content="parent", metadata={"chunk_id": "parent"})
+        child = Document(page_content="child", metadata={"parent_id": "parent"})
+
+        _, vectorstore, _ = build_indexes(
+            [parent],
+            [child],
+            "cpu",
+            1,
+            ("dense",),
+            embeddings=DeterministicFakeEmbedding(size=4),
+        )
+
+        self.assertEqual(vectorstore.index.ntotal, 1)
 
 
 if __name__ == "__main__":

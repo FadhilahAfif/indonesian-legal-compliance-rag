@@ -150,9 +150,10 @@ initial Recall@5 target of `0.85`, so parameter calibration remains pending.
 ### Run retrieval calibration
 
 Open `notebooks/retrieval_calibration.ipynb` in Google Colab, select a T4 GPU
-or better, and run every cell. The default sweep compares candidate depths
-`10`, `20`, and `40`, BM25 weights `0.2`, `0.4`, and `0.6`, then evaluates
-reranker thresholds `0.1`, `0.2`, `0.24`, and `0.3` on the best hybrid setup.
+or better, and run every cell. The default sweep compares five parent/child
+chunk and overlap configurations, candidate depths `10`, `20`, and `40`, and
+BM25 weights `0.2`, `0.4`, and `0.6`. It then evaluates reranker thresholds
+`0.1`, `0.2`, `0.24`, and `0.3` on the best hybrid setup.
 
 The notebook writes `eval/results/retrieval_calibration.json` and
 `eval/results/retrieval_calibration_predictions.jsonl`.
@@ -164,9 +165,9 @@ Current calibration result:
 | Best hybrid | 20 | 0.2 | - | **0.8222** | 0.6119 | **0.9111** | 0.7500 | 0.0292 s |
 | Best hybrid + reranker | 20 | 0.2 | 0.24 | **0.8222** | **0.6504** | 0.8889 | **0.8333** | 0.4387 s |
 
-Calibration improved Recall@5 from `0.7778` to `0.8222`, but still misses the
-target of `0.85`. Chunk size and overlap remain the next retrieval parameters
-to tune before moving to grounded generation.
+The recorded result above predates the chunk sweep: calibration improved
+Recall@5 from `0.7778` to `0.8222`, but still misses the target of `0.85`.
+Run the updated notebook before moving to grounded generation.
 
 ### Run the M1 baseline in Colab
 
