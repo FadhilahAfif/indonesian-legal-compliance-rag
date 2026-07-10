@@ -33,13 +33,15 @@ notebooks/
 ├── M1_baseline_evaluation.ipynb
 ├── M2_retrieval_ablation.ipynb
 ├── retrieval_calibration.ipynb
-└── retrieval_validation.ipynb
+├── retrieval_validation.ipynb
+└── grounded_generation_benchmark.ipynb
 docs/
 └── data-sources.md
 data/
 └── eval_cases.jsonl
 eval/
 ├── run_baseline.py
+├── run_grounded.py
 └── validate_cases.py
 scripts/
 └── check_environment.py
@@ -65,6 +67,7 @@ The legal PDF files and generated model artifacts are intentionally not committe
 | M2 retrieval | GPU ablation for BM25, dense, hybrid, and hybrid + reranker |
 | Retrieval calibration | GPU sweep for candidate depth, fusion weight, and abstention threshold |
 | Retrieval validation | GPU validation of the selected configuration and scope guard |
+| Grounded generation | GPU benchmark for structured answers, citations, and abstention |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -188,6 +191,37 @@ All 285 returned quotes were matched to their original PDF source and page.
 The retrieval milestone accepts the one-hit exact-page Recall@5 deviation
 because all acceptance criteria pass and further tuning against reviewed
 misses would risk fitting the frozen evaluation set.
+
+### Grounded answer contract
+
+`src.rag.generate_grounded_answer` uses deterministic decoding and returns a
+structured answer with a short answer, legal basis, application, practical
+steps, limitations, citations, and a legal disclaimer. Every legal claim must
+reference a retrieved source ID. The parser reconstructs source metadata from
+retrieval and rejects unknown IDs or quotes that do not appear verbatim in the
+retrieved context. Questions and document text remain untrusted JSON data in
+the prompt.
+
+Run the local contract and prompt-injection checks with:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Run the 60-case generation benchmark in Google Colab by opening
+`notebooks/grounded_generation_benchmark.ipynb`, selecting a T4 GPU, and
+running every cell. The notebook checks the environment and evaluation set,
+downloads the historical corpus, and runs:
+
+```bash
+python -m eval.run_grounded
+```
+
+Download `grounded_report.json` and `grounded_predictions.jsonl` from the final
+cell. The report calculates retrieval, citation precision, output validity,
+abstention, latency, and VRAM. Faithfulness and answer relevance remain unset
+until the predictions receive manual review, so the grounded-generation
+milestone remains open.
 
 ### Run the M1 baseline in Colab
 
