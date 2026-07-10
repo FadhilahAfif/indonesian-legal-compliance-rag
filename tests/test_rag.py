@@ -165,11 +165,14 @@ class RagTest(unittest.TestCase):
         self.assertNotIn(injection, messages[0]["content"])
         self.assertNotIn(injection, trusted_instruction)
         self.assertEqual(payload["question"], injection)
-        self.assertEqual(payload["sources"][0]["text"], injection)
+        snippets = payload["sources"][0]["snippets"]
+        self.assertEqual(snippets[0]["text"], injection)
+        self.assertLessEqual(max(len(item["text"]) for item in snippets), 220)
         self.assertEqual(messages[2], {"role": "assistant", "content": '{"status":'})
 
     def test_grounded_answer_requires_claim_citations_and_verbatim_quotes(self) -> None:
         document = self.pages[0]
+        legal_basis = "x" * 345
         raw_answer = json.dumps(
             {
                 "status": "answer",
@@ -177,21 +180,15 @@ class RagTest(unittest.TestCase):
                     {
                         "section": "short_answer",
                         "text": "Usaha ini berisiko rendah.",
-                        "citations": ["S1"],
+                        "citations": ["S1Q1"],
                     },
                     {
                         "section": "legal_basis",
-                        "text": "Pasal 10 mengatur risiko rendah.",
-                        "citations": ["S1"],
+                        "text": legal_basis,
+                        "citations": ["S1Q1"],
                     },
                 ],
                 "limitations": ["Konteks tidak memuat jenis usaha tertentu."],
-                "quotes": [
-                    {
-                        "source_id": "S1",
-                        "quote": "Pasal 10 Kegiatan usaha berisiko rendah.",
-                    }
-                ],
             }
         )
 
@@ -200,17 +197,24 @@ class RagTest(unittest.TestCase):
         self.assertEqual(answer["status"], "answer")
         self.assertEqual(answer["citations"][0]["page"], 1)
         self.assertEqual(answer["citations"][0]["article"], "Pasal 10")
+        self.assertEqual(
+            answer["citations"][0]["quote"],
+            "Pasal 10 Kegiatan usaha berisiko rendah.",
+        )
         self.assertIn("bukan nasihat hukum", answer["disclaimer"].lower())
 
-        unsupported = raw_answer.replace("berisiko rendah", "berisiko tinggi")
-        with self.assertRaisesRegex(ValueError, "quote"):
-            parse_grounded_answer(unsupported, [document])
-        uncited = raw_answer.replace('["S1"]', "[]", 1)
+        too_long = raw_answer.replace(legal_basis, "x" * 401)
+        with self.assertRaisesRegex(ValueError, "1-400"):
+            parse_grounded_answer(too_long, [document])
+        uncited = raw_answer.replace('["S1Q1"]', "[]", 1)
         with self.assertRaisesRegex(ValueError, "citations"):
             parse_grounded_answer(uncited, [document])
-        unknown_source = raw_answer.replace('"S1"', '"S9"')
-        with self.assertRaisesRegex(ValueError, "source IDs"):
-            parse_grounded_answer(unknown_source, [document])
+        unknown_snippet = raw_answer.replace('"S1Q1"', '"S1Q9"')
+        with self.assertRaisesRegex(ValueError, "snippet IDs"):
+            parse_grounded_answer(unknown_snippet, [document])
+        duplicate_short_answer = raw_answer.replace('"legal_basis"', '"short_answer"')
+        with self.assertRaisesRegex(ValueError, "exactly one short_answer"):
+            parse_grounded_answer(duplicate_short_answer, [document])
         with self.assertRaisesRegex(ValueError, "abstention"):
             parse_grounded_answer(
                 json.dumps(
@@ -229,21 +233,15 @@ class RagTest(unittest.TestCase):
                     {
                         "section": "short_answer",
                         "text": "Usaha ini berisiko rendah.",
-                        "citations": ["S1"],
+                        "citations": ["S1Q1"],
                     },
                     {
                         "section": "legal_basis",
                         "text": "Pasal 10 mengatur risiko rendah.",
-                        "citations": ["S1"],
+                        "citations": ["S1Q1"],
                     },
                 ],
                 "limitations": [],
-                "quotes": [
-                    {
-                        "source_id": "S1",
-                        "quote": "Pasal 10 Kegiatan usaha berisiko rendah.",
-                    }
-                ],
             }
         )
 
@@ -335,8 +333,7 @@ class RagTest(unittest.TestCase):
         self.assertNotIn("raw_output", diagnostics)
 
         short_text = "Usaha ini berisiko rendah."
-        long_text = "x" * 301
-        quote = "Pasal 10 Kegiatan usaha berisiko rendah."
+        long_text = "x" * 401
         structured = json.dumps(
             {
                 "status": "answer",
@@ -344,16 +341,15 @@ class RagTest(unittest.TestCase):
                     {
                         "section": "short_answer",
                         "text": short_text,
-                        "citations": ["S1"],
+                        "citations": ["S1Q1"],
                     },
                     {
                         "section": "legal_basis",
                         "text": long_text,
-                        "citations": ["S1"],
+                        "citations": ["S1Q1"],
                     },
                 ],
                 "limitations": [],
-                "quotes": [{"source_id": "S1", "quote": quote}],
             }
         )
         with self.assertRaises(GroundedOutputError) as raised:
@@ -373,9 +369,9 @@ class RagTest(unittest.TestCase):
             diagnostics["claim_text_lengths"], [len(short_text), len(long_text)]
         )
         self.assertEqual(diagnostics["claim_citation_counts"], [1, 1])
-        self.assertEqual(diagnostics["quote_lengths"], [len(quote)])
-        self.assertEqual(diagnostics["quote_source_ids"], ["S1"])
-        self.assertEqual(diagnostics["quote_matches_source"], [True])
+        self.assertEqual(
+            diagnostics["claim_citation_ids"], [["S1Q1"], ["S1Q1"]]
+        )
 
     def test_grounded_metrics_count_retrieval_citations_and_invalid_outputs(self) -> None:
         predictions = [

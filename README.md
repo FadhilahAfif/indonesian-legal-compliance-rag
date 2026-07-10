@@ -197,10 +197,10 @@ misses would risk fitting the frozen evaluation set.
 `src.rag.generate_grounded_answer` uses deterministic decoding and returns a
 structured answer with a short answer, legal basis, application, practical
 steps, limitations, citations, and a legal disclaimer. Every legal claim must
-reference a retrieved source ID. The parser reconstructs source metadata from
-retrieval and rejects unknown IDs or quotes that do not appear verbatim in the
-retrieved context. Questions and document text remain untrusted JSON data in
-the prompt.
+reference a precomputed snippet ID. The parser reconstructs source metadata and
+the exact short quote from retrieval, so model-generated quote text is never
+trusted. Unknown snippet IDs are rejected. Questions and document text remain
+untrusted JSON data in the prompt.
 
 Run the local contract and prompt-injection checks with:
 
@@ -250,7 +250,7 @@ It writes `eval/results/baseline_report.json` and `eval/results/baseline_predict
 
 - The existing SFT and GRPO dataset is general Indonesian instruction data, not a curated legal dataset.
 - The M1 baseline has low generation quality: faithfulness `0.4643`, answer relevance `0.3833`, and citation precision `0.2791`.
-- The first grounded-generation run produced `43/43` invalid model outputs. JSON prefill then produced the expected top-level schema in `3/4` attempted gate cases without hitting the token limit; enriched content-free diagnostics now await a second five-case gate run.
+- The first grounded-generation run produced `43/43` invalid model outputs. JSON prefill fixed the top-level schema, but `0/3` model-generated quotes matched retrieval; citation by precomputed snippet ID now awaits a five-case GPU gate.
 - PP Nomor 5 Tahun 2021 is no longer in force, and PP Nomor 51 Tahun 2023 has since been amended; the four-document corpus is a historical evaluation scope, not a statement of current law.
 - The current notebooks are experiments and are not a production legal service.
 
