@@ -168,28 +168,18 @@ class RagTest(unittest.TestCase):
         snippets = payload["sources"][0]["snippets"]
         self.assertEqual(snippets[0]["text"], injection)
         self.assertLessEqual(max(len(item["text"]) for item in snippets), 220)
-        self.assertEqual(messages[2], {"role": "assistant", "content": '{"status":'})
+        self.assertEqual(messages[2], {"role": "assistant", "content": "STATUS: "})
 
     def test_grounded_answer_requires_claim_citations_and_verbatim_quotes(self) -> None:
         document = self.pages[0]
         legal_basis = "x" * 345
-        raw_answer = json.dumps(
-            {
-                "status": "answer",
-                "claims": [
-                    {
-                        "section": "short_answer",
-                        "text": "Usaha ini berisiko rendah.",
-                        "citations": ["S1Q1"],
-                    },
-                    {
-                        "section": "legal_basis",
-                        "text": legal_basis,
-                        "citations": ["S1Q1"],
-                    },
-                ],
-                "limitations": ["Konteks tidak memuat jenis usaha tertentu."],
-            }
+        raw_answer = "\n".join(
+            [
+                "STATUS: answer",
+                "SHORT_ANSWER [S1Q1]: Usaha ini berisiko rendah.",
+                f"LEGAL_BASIS [S1Q1]: {legal_basis}",
+                "LIMITATIONS: Konteks tidak memuat jenis usaha tertentu.",
+            ]
         )
 
         answer = parse_grounded_answer(raw_answer, [document])
@@ -206,43 +196,31 @@ class RagTest(unittest.TestCase):
         too_long = raw_answer.replace(legal_basis, "x" * 401)
         with self.assertRaisesRegex(ValueError, "1-400"):
             parse_grounded_answer(too_long, [document])
-        uncited = raw_answer.replace('["S1Q1"]', "[]", 1)
-        with self.assertRaisesRegex(ValueError, "citations"):
+        uncited = raw_answer.replace("[S1Q1]", "[]", 1)
+        with self.assertRaisesRegex(ValueError, "line protocol"):
             parse_grounded_answer(uncited, [document])
-        unknown_snippet = raw_answer.replace('"S1Q1"', '"S1Q9"')
+        unknown_snippet = raw_answer.replace("S1Q1", "S1Q9")
         with self.assertRaisesRegex(ValueError, "snippet IDs"):
             parse_grounded_answer(unknown_snippet, [document])
-        duplicate_short_answer = raw_answer.replace('"legal_basis"', '"short_answer"')
+        duplicate_short_answer = raw_answer.replace("LEGAL_BASIS", "SHORT_ANSWER")
         with self.assertRaisesRegex(ValueError, "exactly one short_answer"):
             parse_grounded_answer(duplicate_short_answer, [document])
         with self.assertRaisesRegex(ValueError, "abstention"):
             parse_grounded_answer(
-                json.dumps(
-                    {"status": "insufficient_context", "reasoning": "Tidak ditampilkan"}
-                ),
+                "STATUS: insufficient_context\nLIMITATIONS: Tidak ditampilkan",
                 [document],
             )
 
     def test_generation_is_deterministic_and_abstains_without_documents(self) -> None:
         import torch
 
-        raw_answer = json.dumps(
-            {
-                "status": "answer",
-                "claims": [
-                    {
-                        "section": "short_answer",
-                        "text": "Usaha ini berisiko rendah.",
-                        "citations": ["S1Q1"],
-                    },
-                    {
-                        "section": "legal_basis",
-                        "text": "Pasal 10 mengatur risiko rendah.",
-                        "citations": ["S1Q1"],
-                    },
-                ],
-                "limitations": [],
-            }
+        raw_answer = "\n".join(
+            [
+                "STATUS: answer",
+                "SHORT_ANSWER [S1Q1]: Usaha ini berisiko rendah.",
+                "LEGAL_BASIS [S1Q1]: Pasal 10 mengatur risiko rendah.",
+                "LIMITATIONS: -",
+            ]
         )
 
         class Encoding(dict):
@@ -260,7 +238,7 @@ class RagTest(unittest.TestCase):
                 return Encoding(input_ids=torch.tensor([[1, 2]]))
 
             def decode(self, *args: object, **kwargs: object) -> str:
-                return raw_answer[len('{"status":') :]
+                return raw_answer[len("STATUS: ") :]
 
         class Model:
             def parameters(self):
@@ -323,45 +301,34 @@ class RagTest(unittest.TestCase):
 
         with self.assertRaises(GroundedOutputError) as raised:
             generate_grounded_answer(
-                "Apa risikonya?", self.pages, Model(514), Tokenizer('"answer"')
+                "Apa risikonya?", self.pages, Model(514), Tokenizer("answer\nBROKEN")
             )
 
         diagnostics = raised.exception.diagnostics
         self.assertTrue(diagnostics["hit_token_limit"])
         self.assertEqual(diagnostics["generated_token_count"], 512)
-        self.assertEqual(diagnostics["json_error"]["position"], 18)
+        self.assertEqual(diagnostics["line_prefixes"], ["status", "invalid"])
         self.assertNotIn("raw_output", diagnostics)
 
         short_text = "Usaha ini berisiko rendah."
         long_text = "x" * 401
-        structured = json.dumps(
-            {
-                "status": "answer",
-                "claims": [
-                    {
-                        "section": "short_answer",
-                        "text": short_text,
-                        "citations": ["S1Q1"],
-                    },
-                    {
-                        "section": "legal_basis",
-                        "text": long_text,
-                        "citations": ["S1Q1"],
-                    },
-                ],
-                "limitations": [],
-            }
+        structured = "\n".join(
+            [
+                "STATUS: answer",
+                f"SHORT_ANSWER [S1Q1]: {short_text}",
+                f"LEGAL_BASIS [S1Q1]: {long_text}",
+                "LIMITATIONS: -",
+            ]
         )
         with self.assertRaises(GroundedOutputError) as raised:
             generate_grounded_answer(
                 "Apa risikonya?",
                 self.pages,
                 Model(7),
-                Tokenizer(structured[len('{"status":') :]),
+                Tokenizer(structured[len("STATUS: ") :]),
             )
 
         diagnostics = raised.exception.diagnostics
-        self.assertIsNone(diagnostics["json_error"])
         self.assertEqual(
             diagnostics["claim_sections"], ["short_answer", "legal_basis"]
         )
