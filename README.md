@@ -194,15 +194,13 @@ misses would risk fitting the frozen evaluation set.
 
 ### Grounded answer contract
 
-`src.rag.generate_grounded_answer` uses deterministic decoding and returns a
-structured answer with a short answer, legal basis, application, practical
-steps, limitations, citations, and a legal disclaimer. Every legal claim must
-reference a precomputed snippet ID. The parser reconstructs source metadata and
-the exact short quote from retrieval, so model-generated quote text is never
-trusted. Unknown snippet IDs are rejected. Questions and document text remain
-untrusted JSON data in the prompt. The model returns a constrained line
-protocol which is converted into the structured application response; the
-model is not required to serialize JSON.
+`src.rag.generate_grounded_answer` returns a deterministic extractive fallback
+with a short answer, legal basis, limitations, citations, and a legal
+disclaimer. It selects a short snippet from the retrieved documents by lexical
+overlap with the question and reconstructs source metadata directly from the
+retrieval result. No model-generated claim, source, page, article, or quote is
+trusted. Question and document text are treated only as data; there is no
+instruction-execution path in generation.
 
 Run the local contract and prompt-injection checks with:
 
@@ -219,9 +217,8 @@ downloads the historical corpus, and runs:
 python -m eval.run_grounded
 ```
 
-The runner uses the first five cases as a format gate. It continues to all 60
-cases only when every attempted generation returns a valid grounded schema;
-otherwise it saves the partial diagnostics and stops early.
+The runner evaluates all 60 cases. It uses the GPU only for dense retrieval and
+reranking; the answer renderer itself does not load a generative model.
 
 Download `grounded_report.json` and `grounded_predictions.jsonl` from the final
 cell. The report calculates retrieval, citation precision, output validity,
@@ -252,7 +249,7 @@ It writes `eval/results/baseline_report.json` and `eval/results/baseline_predict
 
 - The existing SFT and GRPO dataset is general Indonesian instruction data, not a curated legal dataset.
 - The M1 baseline has low generation quality: faithfulness `0.4643`, answer relevance `0.3833`, and citation precision `0.2791`.
-- JSON output remained invalid across successive base-model gates. The final format experiment uses a constrained line protocol with precomputed snippet citations; if its five-case gate fails, the project will stop format tuning and use deterministic extractive answers or reject the base model.
+- Qwen2.5-3B-Instruct was rejected for grounded generation after the final line-protocol gate produced `0/4` valid outputs. The deterministic fallback prevents malformed or hallucinated output, but replay against the final 60-case retrieval artifact selected an expected source for `31/41` generated answerable cases and an expected page for `25/41`; this is not evidence that answer relevance meets the target.
 - PP Nomor 5 Tahun 2021 is no longer in force, and PP Nomor 51 Tahun 2023 has since been amended; the four-document corpus is a historical evaluation scope, not a statement of current law.
 - The current notebooks are experiments and are not a production legal service.
 
