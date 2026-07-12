@@ -57,3 +57,14 @@ The compact `comparison.json` is versioned with this review. Per-model
 predictions are omitted because all model answers are null and each file mostly
 duplicates the same retrieved context. The uploaded ZIP hash above preserves a
 verifiable reference to the complete local artifact.
+
+## Model Card Publication
+
+The benchmark decision, training data, method, limitations, and Indonesian
+language metadata were published and verified against the versioned sources:
+
+- SFT: commit `5f1627dc1d3ffda08bbef7a7f51ddfc5dee97f77`.
+- GRPO: commit `5e3621a7ed26390afbc5f12d8ab629fc91ea10a2`.
+
+Both remote cards report `language: id`, the Indonesian Alpaca dataset, and the
+Apache-2.0 model license. Remote content matches the local model-card sources.
