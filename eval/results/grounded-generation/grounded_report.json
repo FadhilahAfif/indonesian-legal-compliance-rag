@@ -1,0 +1,62 @@
+{
+  "config": {
+    "generator": "deterministic_extractive",
+    "device": "cpu",
+    "seed": 42,
+    "parent_chunk_size": 1000,
+    "parent_chunk_overlap": 100,
+    "child_chunk_size": 300,
+    "child_chunk_overlap": 30,
+    "candidate_k": 10,
+    "rerank_k": 5,
+    "generation_context_k": 5,
+    "snippet_ranking": "bm25_word_and_character_5gram",
+    "snippet_width": 180,
+    "snippet_window": 2,
+    "bm25_weight": 0.4,
+    "reranker_threshold": 0.3,
+    "deterministic_generation": true,
+    "hyde": false,
+    "web_fallback": false,
+    "retrieval_artifact": "eval\\results\\final-retrieval\\retrieval_predictions.jsonl",
+    "review": "eval\\results\\grounded-generation\\grounded_review.json"
+  },
+  "requested_case_count": 60,
+  "case_count": 60,
+  "metrics": {
+    "retrieval": {
+      "recall_at_5": 0.8444444444444444,
+      "mrr": 0.6637037037037037,
+      "source_hit_rate": 0.9111111111111111
+    },
+    "generation": {
+      "faithfulness": 1.0,
+      "answer_relevance": 0.6166666666666667,
+      "citation_precision": 1.0,
+      "attempt_count": 43,
+      "valid_output_rate": 1.0,
+      "reviewed_case_count": 60,
+      "reviewed_claim_count": 41,
+      "note": "Faithfulness and answer relevance use the versioned manual review."
+    },
+    "safety": {
+      "abstention_accuracy": 0.9333333333333333,
+      "invalid_output_count": 0
+    },
+    "runtime": {
+      "mean_latency_seconds": 0.0035911099975540614,
+      "p95_latency_seconds": 0.004445699974894524,
+      "max_gpu_memory_mb": 0.0
+    }
+  },
+  "failure_cases": [
+    "m1-004",
+    "m1-009",
+    "m1-010",
+    "m1-031",
+    "m1-033",
+    "m1-038",
+    "m1-040",
+    "m1-041"
+  ]
+}

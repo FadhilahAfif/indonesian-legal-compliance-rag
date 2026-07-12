@@ -34,7 +34,8 @@ notebooks/
 ├── M2_retrieval_ablation.ipynb
 ├── retrieval_calibration.ipynb
 ├── retrieval_validation.ipynb
-└── grounded_generation_benchmark.ipynb
+├── grounded_generation_benchmark.ipynb
+└── model_comparison_benchmark.ipynb
 docs/
 └── data-sources.md
 data/
@@ -68,13 +69,20 @@ The legal PDF files and generated model artifacts are intentionally not committe
 | Retrieval calibration | GPU sweep for candidate depth, fusion weight, and abstention threshold |
 | Retrieval validation | GPU validation of the selected configuration and scope guard |
 | Grounded generation | GPU benchmark for structured answers, citations, and abstention |
+| Model comparison | Frozen-retrieval comparison of the base, SFT, and GRPO generators |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
 ## Models
 
 - [SFT model](https://huggingface.co/Slotherynn/legal-chatbot-qwen-sft)
+  ([model-card source](docs/model-cards/legal-chatbot-qwen-sft.md))
 - [GRPO model](https://huggingface.co/Slotherynn/legal-chatbot-qwen-grpo)
+  ([model-card source](docs/model-cards/legal-chatbot-qwen-grpo.md))
+
+Both fine-tuned models are retained as historical experiments and are rejected
+for production use by the legal benchmark below. Their training data is
+general Indonesian instruction data, not legal QA data.
 
 ## Environment
 
@@ -196,10 +204,10 @@ misses would risk fitting the frozen evaluation set.
 
 `src.rag.generate_grounded_answer` returns a deterministic extractive fallback
 with a short answer, legal basis, limitations, citations, and a legal
-disclaimer. It selects a short snippet from the retrieved documents by lexical
-overlap with the question and reconstructs source metadata directly from the
-retrieval result. No model-generated claim, source, page, article, or quote is
-trusted. Question and document text are treated only as data; there is no
+disclaimer. It selects an overlapping evidence window with BM25 word and
+character terms, then reconstructs source metadata directly from the retrieval
+result. No model-generated claim, source, page, article, or quote is trusted.
+Question and document text are treated only as data; there is no
 instruction-execution path in generation.
 
 Run the local contract and prompt-injection checks with:
@@ -208,23 +216,54 @@ Run the local contract and prompt-injection checks with:
 python -m unittest discover -s tests -v
 ```
 
-Run the 60-case generation benchmark in Google Colab by opening
-`notebooks/grounded_generation_benchmark.ipynb`, selecting a T4 GPU, and
-running every cell. The notebook checks the environment and evaluation set,
-downloads the historical corpus, and runs:
+Run the reviewed 60-case generation benchmark locally or with
+`notebooks/grounded_generation_benchmark.ipynb`:
 
 ```bash
-python -m eval.run_grounded
+python -m eval.run_grounded \
+  --retrieval-predictions eval/results/final-retrieval/retrieval_predictions.jsonl \
+  --review eval/results/grounded-generation/grounded_review.json
 ```
 
-The runner evaluates all 60 cases. It uses the GPU only for dense retrieval and
-reranking; the answer renderer itself does not load a generative model.
+The command replays the committed final retrieval artifact, applies the
+versioned manual review, and writes `grounded_report.json` plus
+`grounded_predictions.jsonl`. Final results are faithfulness `1.0000`, answer
+relevance `0.6167`, citation precision `1.0000`, abstention accuracy `0.9333`,
+and valid-output rate `1.0000`. See the
+[grounded generation review](eval/results/grounded-generation/grounded_review.md)
+for per-case scoring and limitations.
 
-Download `grounded_report.json` and `grounded_predictions.jsonl` from the final
-cell. The report calculates retrieval, citation precision, output validity,
-abstention, latency, and VRAM. Faithfulness and answer relevance remain unset
-until the predictions receive manual review, so the grounded-generation
-milestone remains open.
+### Compare base, SFT, and GRPO models
+
+Open `notebooks/model_comparison_benchmark.ipynb` in Google Colab and run every
+cell with a T4 GPU or better. The comparison replays the committed final
+retrieval artifact for every model, so questions, retrieved context, ordering,
+prompt, decoding, and output validation remain identical:
+
+```bash
+python -m eval.compare_models
+```
+
+Each model is loaded in 4-bit mode and released before the next model is
+loaded. Reports include output validity, citation precision, abstention,
+generation latency, peak VRAM, and loaded footprint. The
+runner intentionally leaves `production_model` unset until faithfulness and
+answer relevance receive manual review.
+
+Current 60-case result:
+
+| Model | Valid outputs | Citation precision | Abstention accuracy | Mean generation latency | Peak VRAM | Loaded footprint |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen2.5-3B-Instruct | 0/43 | N/E | 0.2167 | 24.81 s | 2686.71 MB | 1916.96 MB |
+| SFT | 0/43 | N/E | 0.2167 | 13.72 s | 2686.36 MB | 1916.96 MB |
+| GRPO | 0/43 | N/E | 0.2167 | 12.15 s | 2686.36 MB | 1916.96 MB |
+
+All attempted model generations failed the validated output contract before a
+claim or citation could be accepted, so faithfulness, answer relevance, and
+citation precision are not evaluable. No fine-tuned model improved quality;
+the application keeps the deterministic extractive fallback. See the
+[comparison review](eval/results/model-comparison/review.md) for the protocol,
+limitations, and training decision.
 
 ### Run the M1 baseline in Colab
 
