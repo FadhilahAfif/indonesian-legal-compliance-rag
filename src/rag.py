@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 import statistics
+import textwrap
 import time
 from pathlib import Path
 from typing import Any, Iterable
@@ -28,6 +29,28 @@ REGULATION_PATTERN = re.compile(
     r"\b(PP|UU)\s+(?:(?:Nomor|No\.?)\s+)?(\d+)\s+Tahun\s+(\d{4})\b",
     re.IGNORECASE,
 )
+DISCLAIMER = (
+    "Informasi ini bukan nasihat hukum dan perlu diverifikasi terhadap regulasi resmi "
+    "atau penasihat hukum yang berkualifikasi."
+)
+INSUFFICIENT_MESSAGE = (
+    "Konteks yang tersedia tidak cukup untuk menjawab pertanyaan ini secara andal."
+)
+MAX_GENERATION_SOURCES = 3
+SNIPPET_WIDTH = 220
+QUESTION_STOPWORDS = {
+    "apa",
+    "apakah",
+    "atau",
+    "dalam",
+    "dan",
+    "dari",
+    "dengan",
+    "pada",
+    "secara",
+    "untuk",
+    "yang",
+}
 
 
 def extract_articles(text: str) -> str | None:
@@ -262,6 +285,76 @@ def document_reference(document: Any, score: float | None = None) -> dict[str, A
     if score is not None:
         reference["score"] = score
     return reference
+
+
+def _evidence_snippets(documents: list[Any]) -> dict[str, dict[str, Any]]:
+    snippets = {}
+    for source_index, document in enumerate(
+        documents[:MAX_GENERATION_SOURCES], 1
+    ):
+        source_id = f"S{source_index}"
+        normalized = " ".join(document.page_content.split())
+        for quote_index, text in enumerate(
+            textwrap.wrap(normalized, width=SNIPPET_WIDTH), 1
+        ):
+            snippets[f"{source_id}Q{quote_index}"] = {
+                "source_id": source_id,
+                "document": document,
+                "text": text,
+            }
+    return snippets
+
+
+def insufficient_context_answer() -> dict[str, Any]:
+    return {
+        "status": "insufficient_context",
+        "short_answer": {"text": INSUFFICIENT_MESSAGE, "citations": []},
+        "legal_basis": [],
+        "application": [],
+        "practical_steps": [],
+        "limitations": ["Tidak ada bukti yang cukup dalam empat regulasi historis."],
+        "citations": [],
+        "disclaimer": DISCLAIMER,
+    }
+
+
+def generate_grounded_answer(
+    question: str, documents: list[Any]
+) -> dict[str, Any]:
+    if not documents:
+        return insufficient_context_answer()
+
+    snippets = _evidence_snippets(documents)
+    if not snippets:
+        return insufficient_context_answer()
+    question_terms = set(re.findall(r"\w{3,}", question.casefold())) - QUESTION_STOPWORDS
+    snippet_id, snippet = max(
+        snippets.items(),
+        key=lambda item: len(
+            question_terms & set(re.findall(r"\w{3,}", item[1]["text"].casefold()))
+        ),
+    )
+    reference = document_reference(snippet["document"])
+    reference.update(id=snippet_id, quote=snippet["text"])
+    article = reference["article"] or f"halaman {reference['page']}"
+    citation_ids = [snippet_id]
+    return {
+        "status": "answer",
+        "short_answer": {"text": snippet["text"], "citations": citation_ids},
+        "legal_basis": [
+            {
+                "text": f"{reference['regulation']}, {article}: {snippet['text']}",
+                "citations": citation_ids,
+            }
+        ],
+        "application": [],
+        "practical_steps": [],
+        "limitations": [
+            "Jawaban bersifat ekstraktif; penerapan pada fakta pengguna tidak disimpulkan otomatis."
+        ],
+        "citations": [reference],
+        "disclaimer": DISCLAIMER,
+    }
 
 
 def evaluate(

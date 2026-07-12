@@ -4,12 +4,16 @@ import unittest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
+from eval.run_grounded import (
+    calculate_metrics as calculate_grounded_metrics,
+)
 from eval.retrieval_calibration import parse_chunk_config, threshold_metrics
 from src.rag import (
     REQUIRED_METADATA,
     build_chunks,
     build_indexes,
     deduplicate_documents,
+    generate_grounded_answer,
     normalize_documents,
     reciprocal_rank_fusion,
     retrieve,
@@ -132,6 +136,96 @@ class RagTest(unittest.TestCase):
         )
 
         self.assertEqual(vectorstore.index.ntotal, 1)
+
+    def test_extractive_generation_selects_and_cites_relevant_snippet(self) -> None:
+        irrelevant = self.pages[0]
+        relevant = Document(
+            page_content="Pasal 13 Perizinan menengah rendah berupa NIB dan Sertifikat Standar.",
+            metadata={**irrelevant.metadata, "page": 2, "article": "Pasal 13"},
+        )
+
+        answer = generate_grounded_answer(
+            "Apa bentuk perizinan usaha menengah rendah?", [irrelevant, relevant]
+        )
+
+        self.assertEqual(answer["status"], "answer")
+        self.assertEqual(answer["citations"][0]["page"], 2)
+        self.assertEqual(answer["short_answer"]["text"], answer["citations"][0]["quote"])
+        self.assertIn("bukan nasihat hukum", answer["disclaimer"].lower())
+        self.assertEqual(
+            generate_grounded_answer("Apa risikonya?", [])["status"],
+            "insufficient_context",
+        )
+        blank = Document(page_content="  ", metadata=irrelevant.metadata)
+        self.assertEqual(
+            generate_grounded_answer("Apa risikonya?", [blank])["status"],
+            "insufficient_context",
+        )
+
+    def test_grounded_metrics_count_retrieval_citations_and_invalid_outputs(self) -> None:
+        predictions = [
+            {
+                "answerable": True,
+                "regulation": ["PP Nomor 5 Tahun 2021"],
+                "page": [1],
+                "retrieval_status": "answer",
+                "status": "answer",
+                "retrieved": [
+                    {
+                        "regulation": "PP Nomor 5 Tahun 2021",
+                        "page": 1,
+                        "chunk_id": "chunk-1",
+                        "quote": "Pasal 10 Kegiatan usaha berisiko rendah.",
+                    }
+                ],
+                "citations": [
+                    {
+                        "regulation": "PP Nomor 5 Tahun 2021",
+                        "page": 1,
+                        "chunk_id": "chunk-1",
+                        "quote": "Kegiatan usaha berisiko rendah.",
+                    }
+                ],
+                "latency_seconds": 1.0,
+                "gpu_peak_memory_mb": 100.0,
+            },
+            {
+                "answerable": False,
+                "regulation": [],
+                "page": [],
+                "retrieval_status": "insufficient_context",
+                "status": "insufficient_context",
+                "retrieved": [],
+                "citations": [],
+                "latency_seconds": 3.0,
+                "gpu_peak_memory_mb": 200.0,
+            },
+            {
+                "answerable": True,
+                "regulation": ["PP Nomor 35 Tahun 2021"],
+                "page": [2],
+                "retrieval_status": "answer",
+                "status": "invalid_output",
+                "retrieved": [],
+                "citations": [],
+                "latency_seconds": 2.0,
+                "gpu_peak_memory_mb": 150.0,
+            },
+        ]
+
+        metrics = calculate_grounded_metrics(predictions)
+
+        self.assertEqual(metrics["retrieval"]["recall_at_5"], 0.5)
+        self.assertEqual(metrics["generation"]["citation_precision"], 1.0)
+        self.assertEqual(metrics["generation"]["valid_output_rate"], 0.5)
+        self.assertIsNone(metrics["generation"]["faithfulness"])
+        self.assertEqual(metrics["safety"]["abstention_accuracy"], 2 / 3)
+        self.assertEqual(metrics["runtime"]["mean_latency_seconds"], 2.0)
+        self.assertIsNone(
+            calculate_grounded_metrics(predictions[1:])["generation"][
+                "citation_precision"
+            ]
+        )
 
 
 if __name__ == "__main__":
