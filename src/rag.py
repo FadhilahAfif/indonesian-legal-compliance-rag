@@ -287,7 +287,7 @@ def document_reference(document: Any, score: float | None = None) -> dict[str, A
     return reference
 
 
-def _evidence_snippets(documents: list[Any]) -> dict[str, dict[str, Any]]:
+def evidence_snippets(documents: list[Any]) -> dict[str, dict[str, Any]]:
     snippets = {}
     for source_index, document in enumerate(
         documents[:MAX_GENERATION_SOURCES], 1
@@ -324,7 +324,7 @@ def generate_grounded_answer(
     if not documents:
         return insufficient_context_answer()
 
-    snippets = _evidence_snippets(documents)
+    snippets = evidence_snippets(documents)
     if not snippets:
         return insufficient_context_answer()
     question_terms = set(re.findall(r"\w{3,}", question.casefold())) - QUESTION_STOPWORDS

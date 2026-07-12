@@ -34,7 +34,8 @@ notebooks/
 ├── M2_retrieval_ablation.ipynb
 ├── retrieval_calibration.ipynb
 ├── retrieval_validation.ipynb
-└── grounded_generation_benchmark.ipynb
+├── grounded_generation_benchmark.ipynb
+└── model_comparison_benchmark.ipynb
 docs/
 └── data-sources.md
 data/
@@ -68,6 +69,7 @@ The legal PDF files and generated model artifacts are intentionally not committe
 | Retrieval calibration | GPU sweep for candidate depth, fusion weight, and abstention threshold |
 | Retrieval validation | GPU validation of the selected configuration and scope guard |
 | Grounded generation | GPU benchmark for structured answers, citations, and abstention |
+| Model comparison | Frozen-retrieval comparison of the base, SFT, and GRPO generators |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -225,6 +227,23 @@ cell. The report calculates retrieval, citation precision, output validity,
 abstention, latency, and VRAM. Faithfulness and answer relevance remain unset
 until the predictions receive manual review, so the grounded-generation
 milestone remains open.
+
+### Compare base, SFT, and GRPO models
+
+Open `notebooks/model_comparison_benchmark.ipynb` in Google Colab and run every
+cell with a T4 GPU or better. The comparison replays the committed final
+retrieval artifact for every model, so questions, retrieved context, ordering,
+prompt, decoding, and output validation remain identical:
+
+```bash
+python -m eval.compare_models
+```
+
+Each model is loaded in 4-bit mode and released before the next model is
+loaded. Reports include output validity, citation precision, abstention,
+generation latency, peak VRAM, parameter count, and loaded footprint. The
+runner intentionally leaves `production_model` unset until faithfulness and
+answer relevance receive manual review.
 
 ### Run the M1 baseline in Colab
 
