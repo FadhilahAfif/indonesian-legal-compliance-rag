@@ -9,6 +9,7 @@ from langchain_core.embeddings import DeterministicFakeEmbedding
 
 from eval.compare_models import (
     build_model_messages,
+    generate_model_answer,
     load_retrieval_predictions,
     parse_model_output,
 )
@@ -206,6 +207,40 @@ class RagTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "duplicate case IDs"):
                 load_retrieval_predictions(path)
+
+    def test_model_comparison_keeps_token_count_for_invalid_output(self) -> None:
+        import torch
+
+        class Encoding(dict):
+            def to(self, device: torch.device) -> "Encoding":
+                return self
+
+        class Tokenizer:
+            pad_token_id = 0
+
+            def apply_chat_template(self, *args: object, **kwargs: object) -> str:
+                return "prompt"
+
+            def __call__(self, *args: object, **kwargs: object) -> Encoding:
+                return Encoding(input_ids=torch.tensor([[1, 2]]))
+
+            def decode(self, *args: object, **kwargs: object) -> str:
+                return "invalid"
+
+        class Model:
+            def parameters(self):
+                return iter([torch.tensor(0)])
+
+            def generate(self, **kwargs: object) -> torch.Tensor:
+                return torch.tensor([[1, 2, 3, 4, 5]])
+
+        answer, token_count, error = generate_model_answer(
+            "Apa risikonya?", self.pages, Model(), Tokenizer()
+        )
+
+        self.assertIsNone(answer)
+        self.assertEqual(token_count, 3)
+        self.assertIn("valid STATUS", error or "")
 
     def test_grounded_metrics_count_retrieval_citations_and_invalid_outputs(self) -> None:
         predictions = [

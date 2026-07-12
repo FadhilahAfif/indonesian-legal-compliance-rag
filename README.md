@@ -76,7 +76,13 @@ The notebooks were developed for a GPU-enabled Google Colab environment.
 ## Models
 
 - [SFT model](https://huggingface.co/Slotherynn/legal-chatbot-qwen-sft)
+  ([model-card source](docs/model-cards/legal-chatbot-qwen-sft.md))
 - [GRPO model](https://huggingface.co/Slotherynn/legal-chatbot-qwen-grpo)
+  ([model-card source](docs/model-cards/legal-chatbot-qwen-grpo.md))
+
+Both fine-tuned models are retained as historical experiments and are rejected
+for production use by the legal benchmark below. Their training data is
+general Indonesian instruction data, not legal QA data.
 
 ## Environment
 
@@ -241,9 +247,24 @@ python -m eval.compare_models
 
 Each model is loaded in 4-bit mode and released before the next model is
 loaded. Reports include output validity, citation precision, abstention,
-generation latency, peak VRAM, parameter count, and loaded footprint. The
+generation latency, peak VRAM, and loaded footprint. The
 runner intentionally leaves `production_model` unset until faithfulness and
 answer relevance receive manual review.
+
+Current 60-case result:
+
+| Model | Valid outputs | Citation precision | Abstention accuracy | Mean generation latency | Peak VRAM | Loaded footprint |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen2.5-3B-Instruct | 0/43 | N/E | 0.2167 | 24.81 s | 2686.71 MB | 1916.96 MB |
+| SFT | 0/43 | N/E | 0.2167 | 13.72 s | 2686.36 MB | 1916.96 MB |
+| GRPO | 0/43 | N/E | 0.2167 | 12.15 s | 2686.36 MB | 1916.96 MB |
+
+All attempted model generations failed the validated output contract before a
+claim or citation could be accepted, so faithfulness, answer relevance, and
+citation precision are not evaluable. No fine-tuned model improved quality;
+the application keeps the deterministic extractive fallback. See the
+[comparison review](eval/results/model-comparison/review.md) for the protocol,
+limitations, and training decision.
 
 ### Run the M1 baseline in Colab
 

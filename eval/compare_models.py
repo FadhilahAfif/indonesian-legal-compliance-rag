@@ -187,7 +187,7 @@ def load_model(model_name: str) -> tuple[Any, Any]:
 
 def generate_model_answer(
     question: str, documents: list[Any], model: Any, tokenizer: Any
-) -> tuple[dict[str, Any], int]:
+) -> tuple[dict[str, Any] | None, int, str | None]:
     import torch
 
     prompt = tokenizer.apply_chat_template(
@@ -210,7 +210,10 @@ def generate_model_answer(
     raw_answer = ANSWER_PREFILL + tokenizer.decode(
         output[0, input_length:], skip_special_tokens=True
     )
-    return parse_model_output(raw_answer, documents), token_count
+    try:
+        return parse_model_output(raw_answer, documents), token_count, None
+    except ValueError as exception:
+        return None, token_count, str(exception)
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -234,7 +237,9 @@ def benchmark_model(
     model, tokenizer = load_model(model_name)
     load_seconds = time.perf_counter() - load_started
     model_stats = {
-        "parameter_count": sum(parameter.numel() for parameter in model.parameters()),
+        "quantized_parameter_elements": sum(
+            parameter.numel() for parameter in model.parameters()
+        ),
         "loaded_footprint_mb": model.get_memory_footprint() / 1024**2,
         "loaded_vram_mb": torch.cuda.memory_allocated() / 1024**2,
         "load_seconds": load_seconds,
@@ -252,13 +257,9 @@ def benchmark_model(
         if retrieved["status"] == "insufficient_context":
             answer = insufficient_context_answer()
         else:
-            try:
-                answer, generated_tokens = generate_model_answer(
-                    case["question"], documents, model, tokenizer
-                )
-            except ValueError as exception:
-                answer = None
-                error = str(exception)
+            answer, generated_tokens, error = generate_model_answer(
+                case["question"], documents, model, tokenizer
+            )
         predictions.append(
             {
                 **case,

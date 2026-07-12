@@ -1,0 +1,148 @@
+{
+  "case_count": 60,
+  "models": {
+    "base": {
+      "config": {
+        "model_label": "base",
+        "model": "Qwen/Qwen2.5-3B-Instruct",
+        "seed": 42,
+        "quantization": "bitsandbytes_4bit",
+        "max_generation_tokens": 512,
+        "deterministic_generation": true,
+        "retrieval_artifact": "final-retrieval/retrieval_predictions.jsonl"
+      },
+      "case_count": 60,
+      "model": {
+        "parameter_count": 1698672640,
+        "loaded_footprint_mb": 1916.96142578125,
+        "loaded_vram_mb": 2094.4912109375,
+        "load_seconds": 70.04155402700007
+      },
+      "metrics": {
+        "retrieval": {
+          "recall_at_5": 0.8444444444444444,
+          "mrr": 0.6637037037037037,
+          "source_hit_rate": 0.9111111111111111
+        },
+        "generation": {
+          "faithfulness": null,
+          "answer_relevance": null,
+          "citation_precision": null,
+          "attempt_count": 43,
+          "valid_output_rate": 0.0,
+          "note": "Faithfulness and answer relevance require manual review."
+        },
+        "safety": {
+          "abstention_accuracy": 0.21666666666666667,
+          "invalid_output_count": 43
+        },
+        "runtime": {
+          "mean_latency_seconds": 17.777542641949996,
+          "p95_latency_seconds": 40.21691431199997,
+          "max_gpu_memory_mb": 2686.70556640625,
+          "mean_generation_latency_seconds": 24.805870365837215
+        }
+      },
+      "manual_review_required": [
+        "faithfulness",
+        "answer_relevance"
+      ]
+    },
+    "sft": {
+      "config": {
+        "model_label": "sft",
+        "model": "Slotherynn/legal-chatbot-qwen-sft",
+        "seed": 42,
+        "quantization": "bitsandbytes_4bit",
+        "max_generation_tokens": 512,
+        "deterministic_generation": true,
+        "retrieval_artifact": "final-retrieval/retrieval_predictions.jsonl"
+      },
+      "case_count": 60,
+      "model": {
+        "parameter_count": 1698672640,
+        "loaded_footprint_mb": 1916.96142578125,
+        "loaded_vram_mb": 2127.7099609375,
+        "load_seconds": 321.314202561
+      },
+      "metrics": {
+        "retrieval": {
+          "recall_at_5": 0.8444444444444444,
+          "mrr": 0.6637037037037037,
+          "source_hit_rate": 0.9111111111111111
+        },
+        "generation": {
+          "faithfulness": null,
+          "answer_relevance": null,
+          "citation_precision": null,
+          "attempt_count": 43,
+          "valid_output_rate": 0.0,
+          "note": "Faithfulness and answer relevance require manual review."
+        },
+        "safety": {
+          "abstention_accuracy": 0.21666666666666667,
+          "invalid_output_count": 43
+        },
+        "runtime": {
+          "mean_latency_seconds": 9.834405326099962,
+          "p95_latency_seconds": 40.234128748999865,
+          "max_gpu_memory_mb": 2686.359375,
+          "mean_generation_latency_seconds": 13.722424237116208
+        }
+      },
+      "manual_review_required": [
+        "faithfulness",
+        "answer_relevance"
+      ]
+    },
+    "grpo": {
+      "config": {
+        "model_label": "grpo",
+        "model": "Slotherynn/legal-chatbot-qwen-grpo",
+        "seed": 42,
+        "quantization": "bitsandbytes_4bit",
+        "max_generation_tokens": 512,
+        "deterministic_generation": true,
+        "retrieval_artifact": "final-retrieval/retrieval_predictions.jsonl"
+      },
+      "case_count": 60,
+      "model": {
+        "parameter_count": 1698672640,
+        "loaded_footprint_mb": 1916.96142578125,
+        "loaded_vram_mb": 2127.7099609375,
+        "load_seconds": 323.26866907600015
+      },
+      "metrics": {
+        "retrieval": {
+          "recall_at_5": 0.8444444444444444,
+          "mrr": 0.6637037037037037,
+          "source_hit_rate": 0.9111111111111111
+        },
+        "generation": {
+          "faithfulness": null,
+          "answer_relevance": null,
+          "citation_precision": null,
+          "attempt_count": 43,
+          "valid_output_rate": 0.0,
+          "note": "Faithfulness and answer relevance require manual review."
+        },
+        "safety": {
+          "abstention_accuracy": 0.21666666666666667,
+          "invalid_output_count": 43
+        },
+        "runtime": {
+          "mean_latency_seconds": 8.704127549966689,
+          "p95_latency_seconds": 39.230279854999935,
+          "max_gpu_memory_mb": 2686.359375,
+          "mean_generation_latency_seconds": 12.145292487116295
+        }
+      },
+      "manual_review_required": [
+        "faithfulness",
+        "answer_relevance"
+      ]
+    }
+  },
+  "production_model": null,
+  "decision_status": "pending_manual_quality_review"
+}
