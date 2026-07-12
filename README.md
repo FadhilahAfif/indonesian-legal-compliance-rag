@@ -204,10 +204,10 @@ misses would risk fitting the frozen evaluation set.
 
 `src.rag.generate_grounded_answer` returns a deterministic extractive fallback
 with a short answer, legal basis, limitations, citations, and a legal
-disclaimer. It selects a short snippet from the retrieved documents by lexical
-overlap with the question and reconstructs source metadata directly from the
-retrieval result. No model-generated claim, source, page, article, or quote is
-trusted. Question and document text are treated only as data; there is no
+disclaimer. It selects an overlapping evidence window with BM25 word and
+character terms, then reconstructs source metadata directly from the retrieval
+result. No model-generated claim, source, page, article, or quote is trusted.
+Question and document text are treated only as data; there is no
 instruction-execution path in generation.
 
 Run the local contract and prompt-injection checks with:
@@ -216,23 +216,22 @@ Run the local contract and prompt-injection checks with:
 python -m unittest discover -s tests -v
 ```
 
-Run the 60-case generation benchmark in Google Colab by opening
-`notebooks/grounded_generation_benchmark.ipynb`, selecting a T4 GPU, and
-running every cell. The notebook checks the environment and evaluation set,
-downloads the historical corpus, and runs:
+Run the reviewed 60-case generation benchmark locally or with
+`notebooks/grounded_generation_benchmark.ipynb`:
 
 ```bash
-python -m eval.run_grounded
+python -m eval.run_grounded \
+  --retrieval-predictions eval/results/final-retrieval/retrieval_predictions.jsonl \
+  --review eval/results/grounded-generation/grounded_review.json
 ```
 
-The runner evaluates all 60 cases. It uses the GPU only for dense retrieval and
-reranking; the answer renderer itself does not load a generative model.
-
-Download `grounded_report.json` and `grounded_predictions.jsonl` from the final
-cell. The report calculates retrieval, citation precision, output validity,
-abstention, latency, and VRAM. Faithfulness and answer relevance remain unset
-until the predictions receive manual review, so the grounded-generation
-milestone remains open.
+The command replays the committed final retrieval artifact, applies the
+versioned manual review, and writes `grounded_report.json` plus
+`grounded_predictions.jsonl`. Final results are faithfulness `1.0000`, answer
+relevance `0.6167`, citation precision `1.0000`, abstention accuracy `0.9333`,
+and valid-output rate `1.0000`. See the
+[grounded generation review](eval/results/grounded-generation/grounded_review.md)
+for per-case scoring and limitations.
 
 ### Compare base, SFT, and GRPO models
 

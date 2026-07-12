@@ -38,6 +38,9 @@ INSUFFICIENT_MESSAGE = (
 )
 MAX_GENERATION_SOURCES = 3
 SNIPPET_WIDTH = 220
+EXTRACTIVE_SNIPPET_WIDTH = 180
+EXTRACTIVE_SNIPPET_WINDOW = 2
+MIN_EXTRACTIVE_SNIPPET_LENGTH = 120
 QUESTION_STOPWORDS = {
     "apa",
     "apakah",
@@ -51,6 +54,15 @@ QUESTION_STOPWORDS = {
     "untuk",
     "yang",
 }
+QUERY_EXPANSIONS = {
+    "umk": "upah minimum kabupaten kota",
+    "ump": "upah minimum provinsi",
+}
+CURRENT_QUERY_PATTERN = re.compile(r"\b(?:saat ini|terbaru|tahun ini)\b", re.IGNORECASE)
+UNDERSPECIFIED_AMOUNT_PATTERN = re.compile(
+    r"\bberapa\s+(?:total|nominal)\b.*\b(?:saya|kami)\b",
+    re.IGNORECASE,
+)
 
 
 def extract_articles(text: str) -> str | None:
@@ -287,22 +299,64 @@ def document_reference(document: Any, score: float | None = None) -> dict[str, A
     return reference
 
 
-def evidence_snippets(documents: list[Any]) -> dict[str, dict[str, Any]]:
+def documents_from_references(references: list[dict[str, Any]]) -> list[Any]:
+    from langchain_core.documents import Document
+
+    return [
+        Document(
+            page_content=reference["quote"],
+            metadata={
+                key: value
+                for key, value in reference.items()
+                if key not in {"quote", "score"}
+            },
+        )
+        for reference in references
+    ]
+
+
+def evidence_snippets(
+    documents: list[Any],
+    max_sources: int = MAX_GENERATION_SOURCES,
+    width: int = SNIPPET_WIDTH,
+    window: int = 1,
+    min_length: int = 0,
+) -> dict[str, dict[str, Any]]:
     snippets = {}
     for source_index, document in enumerate(
-        documents[:MAX_GENERATION_SOURCES], 1
+        documents[:max_sources], 1
     ):
         source_id = f"S{source_index}"
         normalized = " ".join(document.page_content.split())
-        for quote_index, text in enumerate(
-            textwrap.wrap(normalized, width=SNIPPET_WIDTH), 1
-        ):
+        parts = textwrap.wrap(normalized, width=width)
+        windows = [
+            " ".join(parts[index : index + window])
+            for index in range(len(parts))
+        ]
+        eligible = [text for text in windows if len(text) >= min_length]
+        for quote_index, text in enumerate(eligible or windows, 1):
             snippets[f"{source_id}Q{quote_index}"] = {
                 "source_id": source_id,
                 "document": document,
                 "text": text,
             }
     return snippets
+
+
+def _search_terms(text: str) -> list[str]:
+    words = [
+        word
+        for word in re.findall(r"\w+", text.casefold())
+        if (len(word) >= 3 or word.isdigit()) and word not in QUESTION_STOPWORDS
+    ]
+    terms = []
+    for word in words:
+        terms.append(f"w:{word}")
+        if len(word) >= 5:
+            terms.extend(
+                f"g:{word[index:index + 5]}" for index in range(len(word) - 4)
+            )
+    return terms
 
 
 def insufficient_context_answer() -> dict[str, Any]:
@@ -321,19 +375,40 @@ def insufficient_context_answer() -> dict[str, Any]:
 def generate_grounded_answer(
     question: str, documents: list[Any]
 ) -> dict[str, Any]:
-    if not documents:
+    if (
+        not documents
+        or CURRENT_QUERY_PATTERN.search(question)
+        or (
+            UNDERSPECIFIED_AMOUNT_PATTERN.search(question)
+            and not re.search(r"\d", question)
+        )
+    ):
         return insufficient_context_answer()
 
-    snippets = evidence_snippets(documents)
+    snippets = evidence_snippets(
+        documents,
+        max_sources=len(documents),
+        width=EXTRACTIVE_SNIPPET_WIDTH,
+        window=EXTRACTIVE_SNIPPET_WINDOW,
+        min_length=MIN_EXTRACTIVE_SNIPPET_LENGTH,
+    )
     if not snippets:
         return insufficient_context_answer()
-    question_terms = set(re.findall(r"\w{3,}", question.casefold())) - QUESTION_STOPWORDS
-    snippet_id, snippet = max(
-        snippets.items(),
-        key=lambda item: len(
-            question_terms & set(re.findall(r"\w{3,}", item[1]["text"].casefold()))
-        ),
+    from rank_bm25 import BM25Okapi
+
+    expanded_question = " ".join(
+        [question]
+        + [
+            expansion
+            for term, expansion in QUERY_EXPANSIONS.items()
+            if re.search(rf"\b{term}\b", question, re.IGNORECASE)
+        ]
     )
+    candidates = list(snippets.items())
+    scores = BM25Okapi(
+        [_search_terms(item[1]["text"]) for item in candidates]
+    ).get_scores(_search_terms(expanded_question))
+    snippet_id, snippet = candidates[max(range(len(candidates)), key=scores.__getitem__)]
     reference = document_reference(snippet["document"])
     reference.update(id=snippet_id, quote=snippet["text"])
     article = reference["article"] or f"halaman {reference['page']}"

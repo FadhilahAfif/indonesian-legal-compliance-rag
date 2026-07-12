@@ -15,11 +15,76 @@ from src.rag import (
     build_chunks,
     build_indexes,
     document_reference,
+    documents_from_references,
     generate_grounded_answer,
     insufficient_context_answer,
     load_documents,
     retrieve,
 )
+
+
+def load_retrieval_predictions(path: Path) -> dict[str, dict[str, Any]]:
+    with path.open(encoding="utf-8") as source:
+        predictions = [json.loads(line) for line in source if line.strip()]
+    by_id = {item["id"]: item for item in predictions}
+    if len(by_id) != len(predictions):
+        raise ValueError("retrieval predictions contain duplicate case IDs")
+    return by_id
+
+
+def replay_grounded_answers(
+    cases: list[dict[str, Any]], retrieval: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    missing = [case["id"] for case in cases if case["id"] not in retrieval]
+    if missing:
+        raise ValueError(f"retrieval artifact is missing case IDs: {', '.join(missing)}")
+
+    predictions = []
+    for case in cases:
+        retrieved = retrieval[case["id"]]
+        started = time.perf_counter()
+        if retrieved["status"] == "insufficient_context":
+            answer = insufficient_context_answer()
+        else:
+            answer = generate_grounded_answer(
+                case["question"],
+                documents_from_references(retrieved["retrieved"]),
+            )
+        predictions.append(
+            {
+                **case,
+                "retrieval_status": retrieved["status"],
+                "status": answer["status"],
+                "answer": answer,
+                "retrieved": retrieved["retrieved"],
+                "citations": answer.get("citations", []),
+                "latency_seconds": time.perf_counter() - started,
+                "gpu_peak_memory_mb": 0.0,
+            }
+        )
+    return predictions
+
+
+def apply_review_scores(
+    predictions: list[dict[str, Any]], review_path: Path
+) -> None:
+    data = json.loads(review_path.read_text(encoding="utf-8"))
+    scores = data.get("scores")
+    if not isinstance(scores, dict) or set(scores) != {
+        item["id"] for item in predictions
+    }:
+        raise ValueError("review scores must contain every prediction ID exactly once")
+    allowed = {0, 0.5, 1}
+    for prediction in predictions:
+        score = scores[prediction["id"]]
+        if (
+            not isinstance(score, dict)
+            or set(score) != {"faithfulness", "answer_relevance"}
+            or score["faithfulness"] not in allowed | {None}
+            or score["answer_relevance"] not in allowed
+        ):
+            raise ValueError(f"invalid review score for {prediction['id']}")
+        prediction["review"] = score
 
 
 def citation_is_grounded(
@@ -59,6 +124,16 @@ def calculate_metrics(predictions: list[dict[str, Any]]) -> dict[str, Any]:
     sorted_latencies = sorted(latencies)
     p95_index = max(0, math.ceil(0.95 * len(sorted_latencies)) - 1)
     valid_statuses = {"answer", "insufficient_context"}
+    faithfulness_scores = [
+        item["review"]["faithfulness"]
+        for item in predictions
+        if item.get("review", {}).get("faithfulness") is not None
+    ]
+    relevance_scores = [
+        item["review"]["answer_relevance"]
+        for item in predictions
+        if "review" in item
+    ]
     return {
         "retrieval": {
             "recall_at_5": sum(bool(rank) for rank in reciprocal_ranks)
@@ -67,8 +142,14 @@ def calculate_metrics(predictions: list[dict[str, Any]]) -> dict[str, Any]:
             "source_hit_rate": source_hits / len(answerable),
         },
         "generation": {
-            "faithfulness": None,
-            "answer_relevance": None,
+            "faithfulness": (
+                statistics.fmean(faithfulness_scores)
+                if faithfulness_scores
+                else None
+            ),
+            "answer_relevance": (
+                statistics.fmean(relevance_scores) if relevance_scores else None
+            ),
             "citation_precision": sum(
                 citation_is_grounded(citation, item["retrieved"])
                 for item in predictions
@@ -84,7 +165,13 @@ def calculate_metrics(predictions: list[dict[str, Any]]) -> dict[str, Any]:
             / len(generation_attempts)
             if generation_attempts
             else None,
-            "note": "Faithfulness and answer relevance require manual review.",
+            "reviewed_case_count": len(relevance_scores),
+            "reviewed_claim_count": len(faithfulness_scores),
+            "note": (
+                "Faithfulness and answer relevance use the versioned manual review."
+                if relevance_scores
+                else "Faithfulness and answer relevance require manual review."
+            ),
         },
         "safety": {
             "abstention_accuracy": sum(
@@ -116,6 +203,12 @@ def main() -> None:
         "--output-dir", type=Path, default=Path("eval/results/grounded-generation")
     )
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--retrieval-predictions",
+        type=Path,
+        help="Replay a versioned retrieval JSONL instead of rebuilding indexes.",
+    )
+    parser.add_argument("--review", type=Path)
     args = parser.parse_args()
 
     import torch
@@ -124,56 +217,65 @@ def main() -> None:
     torch.manual_seed(42)
 
     cases = load_cases(args.cases, args.limit)
-    pages = load_documents(args.corpus_dir)
-    parents, children = build_chunks(pages, 1000, 100, 300, 30)
-    parents_by_id = {document.metadata["chunk_id"]: document for document in parents}
-    bm25, vectorstore, reranker = build_indexes(
-        parents, children, device, 10, ("hybrid_rerank",)
-    )
+    if args.retrieval_predictions:
+        predictions = replay_grounded_answers(
+            cases, load_retrieval_predictions(args.retrieval_predictions)
+        )
+    else:
+        pages = load_documents(args.corpus_dir)
+        parents, children = build_chunks(pages, 1000, 100, 300, 30)
+        parents_by_id = {
+            document.metadata["chunk_id"]: document for document in parents
+        }
+        bm25, vectorstore, reranker = build_indexes(
+            parents, children, device, 10, ("hybrid_rerank",)
+        )
 
-    predictions = []
-    for index, case in enumerate(cases, 1):
-        print(f"[{index}/{len(cases)}] {case['id']}", flush=True)
-        if device == "cuda":
-            torch.cuda.reset_peak_memory_stats()
-        started = time.perf_counter()
-        documents, scores, retrieval_status = retrieve(
-            case["question"],
-            "hybrid_rerank",
-            5,
-            bm25=bm25,
-            vectorstore=vectorstore,
-            parents_by_id=parents_by_id,
-            reranker=reranker,
-            threshold=0.3,
-            bm25_weight=0.4,
-            candidate_k=10,
-        )
-        references = [
-            document_reference(document, scores[position])
-            for position, document in enumerate(documents)
-        ]
-        if retrieval_status == "insufficient_context":
-            answer = insufficient_context_answer()
-        else:
-            answer = generate_grounded_answer(case["question"], documents)
-        status = answer["status"]
-        predictions.append(
-            {
-                **case,
-                "retrieval_status": retrieval_status,
-                "status": status,
-                "answer": answer,
-                "retrieved": references,
-                "citations": answer.get("citations", []),
-                "latency_seconds": time.perf_counter() - started,
-                "gpu_peak_memory_mb": (
-                    torch.cuda.max_memory_allocated() / 1024**2
-                    if device == "cuda"
-                    else 0.0
-                ),
-            }
-        )
+        predictions = []
+        for index, case in enumerate(cases, 1):
+            print(f"[{index}/{len(cases)}] {case['id']}", flush=True)
+            if device == "cuda":
+                torch.cuda.reset_peak_memory_stats()
+            started = time.perf_counter()
+            documents, scores, retrieval_status = retrieve(
+                case["question"],
+                "hybrid_rerank",
+                5,
+                bm25=bm25,
+                vectorstore=vectorstore,
+                parents_by_id=parents_by_id,
+                reranker=reranker,
+                threshold=0.3,
+                bm25_weight=0.4,
+                candidate_k=10,
+            )
+            references = [
+                document_reference(document, scores[position])
+                for position, document in enumerate(documents)
+            ]
+            if retrieval_status == "insufficient_context":
+                answer = insufficient_context_answer()
+            else:
+                answer = generate_grounded_answer(case["question"], documents)
+            predictions.append(
+                {
+                    **case,
+                    "retrieval_status": retrieval_status,
+                    "status": answer["status"],
+                    "answer": answer,
+                    "retrieved": references,
+                    "citations": answer.get("citations", []),
+                    "latency_seconds": time.perf_counter() - started,
+                    "gpu_peak_memory_mb": (
+                        torch.cuda.max_memory_allocated() / 1024**2
+                        if device == "cuda"
+                        else 0.0
+                    ),
+                }
+            )
+
+    if args.review:
+        apply_review_scores(predictions, args.review)
 
     metrics = calculate_metrics(predictions)
     failures = [
@@ -199,12 +301,21 @@ def main() -> None:
             "child_chunk_overlap": 30,
             "candidate_k": 10,
             "rerank_k": 5,
-            "generation_context_k": 3,
+            "generation_context_k": 5,
+            "snippet_ranking": "bm25_word_and_character_5gram",
+            "snippet_width": 180,
+            "snippet_window": 2,
             "bm25_weight": 0.4,
             "reranker_threshold": 0.3,
             "deterministic_generation": True,
             "hyde": False,
             "web_fallback": False,
+            "retrieval_artifact": (
+                str(args.retrieval_predictions)
+                if args.retrieval_predictions
+                else None
+            ),
+            "review": str(args.review) if args.review else None,
         },
         "requested_case_count": len(cases),
         "case_count": len(predictions),

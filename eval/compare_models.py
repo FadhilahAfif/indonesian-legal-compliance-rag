@@ -13,11 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from eval.run_baseline import load_cases
-from eval.run_grounded import calculate_metrics
+from eval.run_grounded import calculate_metrics, load_retrieval_predictions
 from src.rag import (
     DISCLAIMER,
     MAX_GENERATION_SOURCES,
     document_reference,
+    documents_from_references,
     evidence_snippets,
     insufficient_context_answer,
 )
@@ -49,31 +50,6 @@ LIMITATIONS: batasan atau -
 
 Jika bukti tidak cukup, keluarkan hanya: STATUS: insufficient_context
 """
-
-
-def load_retrieval_predictions(path: Path) -> dict[str, dict[str, Any]]:
-    with path.open(encoding="utf-8") as source:
-        predictions = [json.loads(line) for line in source if line.strip()]
-    by_id = {item["id"]: item for item in predictions}
-    if len(by_id) != len(predictions):
-        raise ValueError("retrieval predictions contain duplicate case IDs")
-    return by_id
-
-
-def documents_from_references(references: list[dict[str, Any]]) -> list[Any]:
-    from langchain_core.documents import Document
-
-    return [
-        Document(
-            page_content=reference["quote"],
-            metadata={
-                key: value
-                for key, value in reference.items()
-                if key not in {"quote", "score"}
-            },
-        )
-        for reference in references
-    ]
 
 
 def build_model_messages(question: str, documents: list[Any]) -> list[dict[str, str]]:
