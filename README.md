@@ -2,7 +2,8 @@
 
 An Indonesian legal compliance assistant that retrieves evidence from regulations, reranks relevant passages, and generates answers with verifiable citations.
 
-> **Status:** active engineering redevelopment. The current repository contains the original training and RAG experiments; evaluation and application code will be added incrementally.
+> **Status:** active engineering redevelopment. The repository includes the
+> historical experiments, reproducible evaluation, and a minimal Gradio demo.
 
 ## Scope
 
@@ -26,6 +27,7 @@ The project explores:
 ## Repository
 
 ```text
+app.py
 notebooks/
 ├── Fine_tuning_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
 ├── GRPO_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
@@ -275,6 +277,21 @@ python -m eval.run_baseline
 
 It writes `eval/results/baseline_report.json` and `eval/results/baseline_predictions.jsonl`. The completed review and scoring rubric are stored in `eval/results/baseline_generation_review.md`.
 
+## Run the Demo
+
+Place the four historical PDFs listed in [the corpus documentation](docs/data-sources.md)
+under `data/raw/`, then start the Gradio application:
+
+```bash
+python app.py
+```
+
+The application builds the selected hybrid + reranker indexes once at startup.
+It shows retrieval status, response time, cited regulation/page/article/quote,
+an optional retrieval debug panel, and benchmark example questions. Use
+`python app.py --device cpu` only for a slow local smoke run; a CUDA GPU is the
+documented runtime target.
+
 ## Roadmap
 
 1. Build a manually reviewed Indonesian legal QA benchmark.
@@ -282,13 +299,13 @@ It writes `eval/results/baseline_report.json` and `eval/results/baseline_predict
 3. Compare BM25, dense, hybrid, reranking, and HyDE with ablation tests.
 4. Add grounded generation, abstention, and citation evaluation.
 5. Compare the base, SFT, and GRPO models on the same benchmark.
-6. Build a minimal Gradio demo and publish reproducible results.
+6. Publish the demo and reproducible results.
 
 ## Current Limitations
 
 - The existing SFT and GRPO dataset is general Indonesian instruction data, not a curated legal dataset.
 - The M1 baseline has low generation quality: faithfulness `0.4643`, answer relevance `0.3833`, and citation precision `0.2791`.
-- Qwen2.5-3B-Instruct was rejected for grounded generation after the final line-protocol gate produced `0/4` valid outputs. The deterministic fallback prevents malformed or hallucinated output, but replay against the final 60-case retrieval artifact selected an expected source for `31/41` generated answerable cases and an expected page for `25/41`; this is not evidence that answer relevance meets the target.
+- Qwen2.5-3B-Instruct, SFT, and GRPO were rejected for grounded generation. The deterministic fallback reached faithfulness and citation precision `1.0000`, but answer relevance remains limited at `0.6167`.
 - PP Nomor 5 Tahun 2021 is no longer in force, and PP Nomor 51 Tahun 2023 has since been amended; the four-document corpus is a historical evaluation scope, not a statement of current law.
 - The current notebooks are experiments and are not a production legal service.
 
