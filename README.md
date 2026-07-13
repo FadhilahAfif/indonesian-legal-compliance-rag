@@ -293,9 +293,10 @@ an optional retrieval debug panel, and benchmark example questions. Use
 documented runtime target.
 
 For a full CUDA validation, open
-`notebooks/demo_cuda_validation.ipynb` in Google Colab with a T4 GPU and run
-every cell. It checks the environment and corpus, runs the unit suite, exercises
-answerable and unanswerable demo flows, and downloads an auditable JSON result.
+`notebooks/demo_cuda_validation.ipynb` in a fresh Google Colab T4 GPU runtime
+and run every cell. It checks the environment and corpus, runs the unit suite
+and full 60-case benchmark, exercises answerable and unanswerable demo flows,
+and downloads an auditable JSON result.
 
 ## Roadmap
 
