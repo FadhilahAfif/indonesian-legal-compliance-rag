@@ -64,7 +64,6 @@ def render_answer(answer: dict[str, Any]) -> str:
         ("Dasar hukum", "legal_basis"),
         ("Penerapan", "application"),
         ("Langkah praktis", "practical_steps"),
-        ("Batasan", "limitations"),
     ):
         items = answer[key]
         if items:
