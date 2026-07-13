@@ -298,6 +298,10 @@ and run every cell. It checks the environment and corpus, runs the unit suite
 and full 60-case benchmark, exercises answerable and unanswerable demo flows,
 and downloads an auditable JSON result.
 
+The recorded [CUDA demo validation](eval/results/demo-validation/cuda_demo_validation_summary.json)
+passed on a Tesla T4 with the pinned Torch `2.10.0`: all 60 benchmark cases ran,
+the answerable flow returned cited evidence, and the out-of-scope flow abstained.
+
 ## Roadmap
 
 1. Build a manually reviewed Indonesian legal QA benchmark.
