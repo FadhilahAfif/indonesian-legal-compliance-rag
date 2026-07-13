@@ -292,6 +292,11 @@ an optional retrieval debug panel, and benchmark example questions. Use
 `python app.py --device cpu` only for a slow local smoke run; a CUDA GPU is the
 documented runtime target.
 
+For a full CUDA validation, open
+`notebooks/demo_cuda_validation.ipynb` in Google Colab with a T4 GPU and run
+every cell. It checks the environment and corpus, runs the unit suite, exercises
+answerable and unanswerable demo flows, and downloads an auditable JSON result.
+
 ## Roadmap
 
 1. Build a manually reviewed Indonesian legal QA benchmark.
