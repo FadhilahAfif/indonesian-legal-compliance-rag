@@ -1,11 +1,15 @@
 # Indonesian Legal Compliance RAG
 
-An Indonesian legal compliance assistant that retrieves evidence from regulations, reranks relevant passages, and generates answers with verifiable citations.
+An Indonesian legal compliance assistant that retrieves evidence from regulations,
+reranks relevant passages, and returns extractive answers with verifiable
+citations. Its answer contract includes an `insufficient_context` outcome for
+questions the guard detects as unsupported.
 
-> **Status:** active engineering redevelopment. The repository includes the
-> historical experiments, reproducible evaluation, and a minimal Gradio demo.
+> **Status:** release documentation and clean-clone verification are in progress.
+> The repository includes historical experiments, reproducible evaluation, and
+> a minimal Gradio demo.
 
-## Scope
+## Problem and Scope
 
 The initial knowledge base covers:
 
@@ -14,7 +18,15 @@ The initial knowledge base covers:
 - PP Nomor 51 Tahun 2023
 - UU Nomor 6 Tahun 2023
 
-The project explores:
+This is a bounded historical benchmark, not a current-law service. PP Nomor 5
+Tahun 2021 is no longer in force and PP Nomor 51 Tahun 2023 has been amended.
+Questions that require current law or evidence outside these four documents are
+unsupported. The benchmark does not prove that every current-law phrasing is
+detected, so an answer must not be treated as a statement of current law. Corpus
+provenance, licensing notes, official download pages, filenames, and checksums
+are recorded in [Regulatory Data Sources](docs/data-sources.md).
+
+The project evaluates:
 
 - Qwen2.5 3B instruction tuning with LoRA
 - GRPO experiments
@@ -24,40 +36,71 @@ The project explores:
 - Cross-encoder reranking
 - Grounded answers with document citations
 
+## Architecture
+
+```mermaid
+flowchart LR
+    PDFs["Four regulatory PDFs"] --> Pages["Load pages and normalize metadata"]
+    Pages --> Parents["Parent chunks"]
+    Parents --> BM25["BM25 retrieval"]
+    Parents --> Children["Child chunks"]
+    Children --> Dense["BGE-M3 + FAISS"]
+    Query["User question"] --> Scope["Regulation scope guard"]
+    Scope --> BM25
+    Scope --> Dense
+    BM25 --> Fusion["Weighted reciprocal-rank fusion"]
+    Dense --> Fusion
+    Fusion --> Reranker["BGE reranker + threshold"]
+    Reranker --> Evidence["BM25 evidence-window selection"]
+    Evidence --> Answer["Structured extractive answer or abstention"]
+    Answer --> Citations["Citation metadata from retrieved document"]
+    Citations --> Demo["Gradio chat and source cards"]
+```
+
+At ingestion, parent chunks supply answer context while child chunks enter the
+vector index exactly once. At query time, BM25 and dense parent results are
+fused, deduplicated, reranked, and filtered at threshold `0.3`. Generation is a
+deterministic extractive fallback: it selects a supporting window and copies the
+regulation, page, article, and chunk ID from retrieval metadata while copying the
+quote verbatim from retrieved document content. HyDE, free-form model generation,
+and web fallback are not in the answer path.
+
 ## Repository
 
 ```text
 app.py
 notebooks/
-├── Fine_tuning_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
-├── GRPO_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
-├── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
+├── *_submission_*.ipynb
 ├── M1_baseline_evaluation.ipynb
 ├── M2_retrieval_ablation.ipynb
-├── retrieval_calibration.ipynb
-├── retrieval_validation.ipynb
+├── retrieval_*.ipynb
 ├── grounded_generation_benchmark.ipynb
-└── model_comparison_benchmark.ipynb
+├── model_comparison_benchmark.ipynb
+└── demo_cuda_validation.ipynb
 docs/
-└── data-sources.md
+├── data-sources.md
+└── model-cards/
 data/
 └── eval_cases.jsonl
 eval/
+├── results/
 ├── run_baseline.py
 ├── run_grounded.py
+├── compare_models.py
 └── validate_cases.py
 scripts/
 └── check_environment.py
 tests/
 ├── test_eval_cases.py
-└── test_rag.py
+├── test_rag.py
+└── test_app.py
 src/
 └── rag.py
 requirements.txt
 requirements-training.txt
 ```
 
-The legal PDF files and generated model artifacts are intentionally not committed. See [Regulatory Data Sources](docs/data-sources.md) for provenance and corpus rules.
+The legal PDF files and generated model artifacts are intentionally not committed.
 
 ## Notebooks
 
@@ -128,6 +171,23 @@ python -m eval.validate_cases --require-reviewed
 
 Do not use this evaluation set for training.
 
+### Quality summary
+
+Both rows use the same 60 reviewed cases. The final generation scores replay the
+frozen final-retrieval artifact, so quality is comparable while runtime is not.
+
+| System | Recall@5 | MRR | Source hit | Faithfulness | Answer relevance | Citation precision | Abstention accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Historical GRPO baseline | 0.8000 | 0.6404 | **0.9333** | 0.4643 | 0.3833 | 0.2791 | 0.8500 |
+| Final hybrid + reranker + extractive fallback | **0.8444** | **0.6637** | 0.9111 | **1.0000** | **0.6167** | **1.0000** | **0.9333** |
+
+The source reports are
+[the historical baseline](eval/results/baseline_report.json),
+[final retrieval](eval/results/final-retrieval/retrieval_ablation.json), and
+[grounded generation](eval/results/grounded-generation/grounded_report.json).
+The final system improves grounding and abstention, but answer relevance remains
+the main measured limitation.
+
 ### Run the retrieval ablation
 
 With the four historical PDFs in `data/raw/`, compare BM25, dense, hybrid,
@@ -159,8 +219,8 @@ Current 60-case result:
 | Hybrid + reranker | 0.7556 | 0.6259 | **0.9111** | **0.8167** | 0.2431 s |
 
 All methods returned valid metadata and zero duplicate results. Latency covers
-per-query retrieval after indexing and model loading. No method has reached the
-initial Recall@5 target of `0.85`, so parameter calibration remains pending.
+per-query retrieval after indexing and model loading. This initial ablation
+motivated the calibration below.
 
 ### Run retrieval calibration
 
@@ -248,9 +308,8 @@ python -m eval.compare_models
 
 Each model is loaded in 4-bit mode and released before the next model is
 loaded. Reports include output validity, citation precision, abstention,
-generation latency, peak VRAM, and loaded footprint. The
-runner intentionally leaves `production_model` unset until faithfulness and
-answer relevance receive manual review.
+generation latency, peak VRAM, and loaded footprint. The versioned run leaves
+`production_model` unset because no candidate passed output validation.
 
 Current 60-case result:
 
@@ -302,14 +361,11 @@ The recorded [CUDA demo validation](eval/results/demo-validation/cuda_demo_valid
 passed on a Tesla T4 with the pinned Torch `2.10.0`: all 60 benchmark cases ran,
 the answerable flow returned cited evidence, and the out-of-scope flow abstained.
 
-## Roadmap
+## Release Status
 
-1. Build a manually reviewed Indonesian legal QA benchmark.
-2. Fix retrieval duplication, metadata, and citation handling.
-3. Compare BM25, dense, hybrid, reranking, and HyDE with ablation tests.
-4. Add grounded generation, abstention, and citation evaluation.
-5. Compare the base, SFT, and GRPO models on the same benchmark.
-6. Publish the demo and reproducible results.
+The benchmark, retrieval repair, grounded fallback, model comparison, and demo
+are complete. Production-readiness documentation, clean-clone verification, and
+the `v1.0.0` tag remain before release.
 
 ## Current Limitations
 
