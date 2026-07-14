@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 
 from langchain_core.documents import Document
 
@@ -6,6 +8,33 @@ from app import answer_question
 
 
 class AppTest(unittest.TestCase):
+    def test_media_capture_notebook_is_clean_and_runnable(self) -> None:
+        path = Path("notebooks/demo_media_capture.ipynb")
+        notebook = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(notebook["nbformat"], 4)
+
+        code_cells = [
+            cell for cell in notebook["cells"] if cell["cell_type"] == "code"
+        ]
+        self.assertTrue(code_cells)
+        for index, cell in enumerate(code_cells, 1):
+            self.assertIsNone(cell["execution_count"])
+            self.assertEqual(cell["outputs"], [])
+            compile("".join(cell["source"]), f"{path}:cell-{index}", "exec")
+
+        source = "\n".join(
+            "".join(cell["source"]) for cell in code_cells
+        )
+        for marker in (
+            "check=True",
+            "app.py",
+            "record_video_dir",
+            "page.video.path()",
+            "page.screenshot",
+            "files.download",
+        ):
+            self.assertIn(marker, source)
+
     def test_chat_handles_answer_abstention_and_error(self) -> None:
         document = Document(
             page_content=(
