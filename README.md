@@ -1,11 +1,15 @@
 # Indonesian Legal Compliance RAG
 
-An Indonesian legal compliance assistant that retrieves evidence from regulations, reranks relevant passages, and generates answers with verifiable citations.
+An Indonesian legal compliance assistant that retrieves evidence from regulations,
+reranks relevant passages, and returns extractive answers with verifiable
+citations. Its answer contract includes an `insufficient_context` outcome for
+questions the guard detects as unsupported.
 
-> **Status:** active engineering redevelopment. The repository includes the
-> historical experiments, reproducible evaluation, and a minimal Gradio demo.
+> **Status:** release documentation and clean-clone verification are in progress.
+> The repository includes historical experiments, reproducible evaluation, and
+> a minimal Gradio demo.
 
-## Scope
+## Problem and Scope
 
 The initial knowledge base covers:
 
@@ -14,7 +18,15 @@ The initial knowledge base covers:
 - PP Nomor 51 Tahun 2023
 - UU Nomor 6 Tahun 2023
 
-The project explores:
+This is a bounded historical benchmark, not a current-law service. PP Nomor 5
+Tahun 2021 is no longer in force and PP Nomor 51 Tahun 2023 has been amended.
+Questions that require current law or evidence outside these four documents are
+unsupported. The benchmark does not prove that every current-law phrasing is
+detected, so an answer must not be treated as a statement of current law. Corpus
+provenance, licensing notes, official download pages, filenames, and checksums
+are recorded in [Regulatory Data Sources](docs/data-sources.md).
+
+The project evaluates:
 
 - Qwen2.5 3B instruction tuning with LoRA
 - GRPO experiments
@@ -24,54 +36,93 @@ The project explores:
 - Cross-encoder reranking
 - Grounded answers with document citations
 
+## Architecture
+
+```mermaid
+flowchart LR
+    PDFs["Four regulatory PDFs"] --> Pages["Load pages and normalize metadata"]
+    Pages --> Parents["Parent chunks"]
+    Parents --> BM25["BM25 retrieval"]
+    Parents --> Children["Child chunks"]
+    Children --> Dense["BGE-M3 + FAISS"]
+    Query["User question"] --> Scope["Regulation scope guard"]
+    Scope --> BM25
+    Scope --> Dense
+    BM25 --> Fusion["Weighted reciprocal-rank fusion"]
+    Dense --> Fusion
+    Fusion --> Reranker["BGE reranker + threshold"]
+    Reranker --> Evidence["BM25 evidence-window selection"]
+    Evidence --> Answer["Structured extractive answer or abstention"]
+    Answer --> Citations["Citation metadata from retrieved document"]
+    Citations --> Demo["Gradio chat and source cards"]
+```
+
+At ingestion, parent chunks supply answer context while child chunks enter the
+vector index exactly once. At query time, BM25 and dense parent results are
+fused, deduplicated, reranked, and filtered at threshold `0.3`. Generation is a
+deterministic extractive fallback: it selects a supporting window and copies the
+regulation, page, article, and chunk ID from retrieval metadata while copying the
+quote verbatim from retrieved document content. HyDE, free-form model generation,
+and web fallback are not in the answer path.
+
 ## Repository
 
 ```text
 app.py
 notebooks/
-├── Fine_tuning_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
-├── GRPO_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
-├── RAG_submission_PGABL_Muhammad_Afif_Fadhilah.ipynb
-├── M1_baseline_evaluation.ipynb
-├── M2_retrieval_ablation.ipynb
+├── rag_pipeline_experiment.ipynb
+├── supervised_fine_tuning.ipynb
+├── grpo_training.ipynb
+├── baseline_evaluation.ipynb
+├── retrieval_ablation.ipynb
 ├── retrieval_calibration.ipynb
 ├── retrieval_validation.ipynb
 ├── grounded_generation_benchmark.ipynb
-└── model_comparison_benchmark.ipynb
+├── model_comparison_benchmark.ipynb
+├── demo_ui.ipynb
+├── demo_cuda_validation.ipynb
+└── demo_media_capture.ipynb
 docs/
-└── data-sources.md
+├── data-sources.md
+└── model-cards/
 data/
 └── eval_cases.jsonl
 eval/
+├── results/
 ├── run_baseline.py
 ├── run_grounded.py
+├── compare_models.py
 └── validate_cases.py
 scripts/
 └── check_environment.py
 tests/
 ├── test_eval_cases.py
-└── test_rag.py
+├── test_rag.py
+└── test_app.py
 src/
 └── rag.py
 requirements.txt
 requirements-training.txt
 ```
 
-The legal PDF files and generated model artifacts are intentionally not committed. See [Regulatory Data Sources](docs/data-sources.md) for provenance and corpus rules.
+The legal PDF files and generated model artifacts are intentionally not committed.
 
 ## Notebooks
 
 | Notebook | Purpose |
 | --- | --- |
-| Fine-tuning | LoRA supervised fine-tuning of Qwen2.5 3B |
-| GRPO | Reward-based post-training experiment |
-| RAG | Hybrid retrieval, reranking, generation, and study case |
-| M1 baseline | Deterministic benchmark runner for the reviewed evaluation set |
-| M2 retrieval | GPU ablation for BM25, dense, hybrid, and hybrid + reranker |
-| Retrieval calibration | GPU sweep for candidate depth, fusion weight, and abstention threshold |
-| Retrieval validation | GPU validation of the selected configuration and scope guard |
-| Grounded generation | GPU benchmark for structured answers, citations, and abstention |
-| Model comparison | Frozen-retrieval comparison of the base, SFT, and GRPO generators |
+| [`rag_pipeline_experiment.ipynb`](notebooks/rag_pipeline_experiment.ipynb) | Historical end-to-end RAG experiment |
+| [`supervised_fine_tuning.ipynb`](notebooks/supervised_fine_tuning.ipynb) | Historical LoRA supervised fine-tuning experiment |
+| [`grpo_training.ipynb`](notebooks/grpo_training.ipynb) | Historical reward-based post-training experiment |
+| [`baseline_evaluation.ipynb`](notebooks/baseline_evaluation.ipynb) | Deterministic baseline for the reviewed evaluation set |
+| [`retrieval_ablation.ipynb`](notebooks/retrieval_ablation.ipynb) | GPU comparison of BM25, dense, hybrid, and reranked retrieval |
+| [`retrieval_calibration.ipynb`](notebooks/retrieval_calibration.ipynb) | GPU sweep for chunking, fusion, and abstention settings |
+| [`retrieval_validation.ipynb`](notebooks/retrieval_validation.ipynb) | GPU validation of the selected retrieval configuration |
+| [`grounded_generation_benchmark.ipynb`](notebooks/grounded_generation_benchmark.ipynb) | Deterministic replay of grounded answers and abstentions |
+| [`model_comparison_benchmark.ipynb`](notebooks/model_comparison_benchmark.ipynb) | Frozen-retrieval comparison of base, SFT, and GRPO models |
+| [`demo_ui.ipynb`](notebooks/demo_ui.ipynb) | Colab launcher for the Gradio chat demo |
+| [`demo_cuda_validation.ipynb`](notebooks/demo_cuda_validation.ipynb) | Full CUDA, benchmark, and demo-flow validation |
+| [`demo_media_capture.ipynb`](notebooks/demo_media_capture.ipynb) | Release screenshot and video capture workflow |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -128,6 +179,23 @@ python -m eval.validate_cases --require-reviewed
 
 Do not use this evaluation set for training.
 
+### Quality summary
+
+Both rows use the same 60 reviewed cases. The final generation scores replay the
+frozen final-retrieval artifact, so quality is comparable while runtime is not.
+
+| System | Recall@5 | MRR | Source hit | Faithfulness | Answer relevance | Citation precision | Abstention accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Historical GRPO baseline | 0.8000 | 0.6404 | **0.9333** | 0.4643 | 0.3833 | 0.2791 | 0.8500 |
+| Final hybrid + reranker + extractive fallback | **0.8444** | **0.6637** | 0.9111 | **1.0000** | **0.6167** | **1.0000** | **0.9333** |
+
+The source reports are
+[the historical baseline](eval/results/baseline_report.json),
+[final retrieval](eval/results/final-retrieval/retrieval_ablation.json), and
+[grounded generation](eval/results/grounded-generation/grounded_report.json).
+The final system improves grounding and abstention, but answer relevance remains
+the main measured limitation.
+
 ### Run the retrieval ablation
 
 With the four historical PDFs in `data/raw/`, compare BM25, dense, hybrid,
@@ -137,7 +205,7 @@ and reranked hybrid retrieval:
 python -m src.rag --device cuda
 ```
 
-For Google Colab, open `notebooks/M2_retrieval_ablation.ipynb`, select a T4
+For Google Colab, open `notebooks/retrieval_ablation.ipynb`, select a T4
 GPU or better, and run every cell.
 
 For a CPU-only smoke benchmark that does not load embedding models:
@@ -159,8 +227,8 @@ Current 60-case result:
 | Hybrid + reranker | 0.7556 | 0.6259 | **0.9111** | **0.8167** | 0.2431 s |
 
 All methods returned valid metadata and zero duplicate results. Latency covers
-per-query retrieval after indexing and model loading. No method has reached the
-initial Recall@5 target of `0.85`, so parameter calibration remains pending.
+per-query retrieval after indexing and model loading. This initial ablation
+motivated the calibration below.
 
 ### Run retrieval calibration
 
@@ -248,9 +316,8 @@ python -m eval.compare_models
 
 Each model is loaded in 4-bit mode and released before the next model is
 loaded. Reports include output validity, citation precision, abstention,
-generation latency, peak VRAM, and loaded footprint. The
-runner intentionally leaves `production_model` unset until faithfulness and
-answer relevance receive manual review.
+generation latency, peak VRAM, and loaded footprint. The versioned run leaves
+`production_model` unset because no candidate passed output validation.
 
 Current 60-case result:
 
@@ -267,9 +334,9 @@ the application keeps the deterministic extractive fallback. See the
 [comparison review](eval/results/model-comparison/review.md) for the protocol,
 limitations, and training decision.
 
-### Run the M1 baseline in Colab
+### Run the historical baseline in Colab
 
-Open `notebooks/M1_baseline_evaluation.ipynb`, select a T4 GPU or better, and run every cell. The notebook installs the runtime dependencies, downloads the historical four-document corpus, validates the reviewed cases, and runs:
+Open `notebooks/baseline_evaluation.ipynb`, select a T4 GPU or better, and run every cell. The notebook installs the runtime dependencies, downloads the historical four-document corpus, validates the reviewed cases, and runs:
 
 ```bash
 python -m eval.run_baseline
@@ -278,6 +345,13 @@ python -m eval.run_baseline
 It writes `eval/results/baseline_report.json` and `eval/results/baseline_predictions.jsonl`. The completed review and scoring rubric are stored in `eval/results/baseline_generation_review.md`.
 
 ## Run the Demo
+
+![Gradio demo showing a cited answer and a safe abstention](docs/assets/gradio-demo.gif)
+
+The recording exercises two reviewed flows: a worker employed for 22 days per
+month over three consecutive months receives cited evidence from PP Nomor 35
+Tahun 2021, while a request for the current Bandung minimum wage returns
+`insufficient_context` without inventing a source.
 
 Place the four historical PDFs listed in [the corpus documentation](docs/data-sources.md)
 under `data/raw/`, then start the Gradio application:
@@ -302,14 +376,11 @@ The recorded [CUDA demo validation](eval/results/demo-validation/cuda_demo_valid
 passed on a Tesla T4 with the pinned Torch `2.10.0`: all 60 benchmark cases ran,
 the answerable flow returned cited evidence, and the out-of-scope flow abstained.
 
-## Roadmap
+## Release Status
 
-1. Build a manually reviewed Indonesian legal QA benchmark.
-2. Fix retrieval duplication, metadata, and citation handling.
-3. Compare BM25, dense, hybrid, reranking, and HyDE with ablation tests.
-4. Add grounded generation, abstention, and citation evaluation.
-5. Compare the base, SFT, and GRPO models on the same benchmark.
-6. Publish the demo and reproducible results.
+The benchmark, retrieval repair, grounded fallback, model comparison, and demo
+are complete. Production-readiness documentation, clean-clone verification, and
+the `v1.0.0` tag remain before release.
 
 ## Current Limitations
 
