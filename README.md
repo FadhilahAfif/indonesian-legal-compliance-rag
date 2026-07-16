@@ -70,13 +70,18 @@ and web fallback are not in the answer path.
 ```text
 app.py
 notebooks/
-├── *_submission_*.ipynb
-├── M1_baseline_evaluation.ipynb
-├── M2_retrieval_ablation.ipynb
-├── retrieval_*.ipynb
+├── rag_pipeline_experiment.ipynb
+├── supervised_fine_tuning.ipynb
+├── grpo_training.ipynb
+├── baseline_evaluation.ipynb
+├── retrieval_ablation.ipynb
+├── retrieval_calibration.ipynb
+├── retrieval_validation.ipynb
 ├── grounded_generation_benchmark.ipynb
 ├── model_comparison_benchmark.ipynb
-└── demo_cuda_validation.ipynb
+├── demo_ui.ipynb
+├── demo_cuda_validation.ipynb
+└── demo_media_capture.ipynb
 docs/
 ├── data-sources.md
 └── model-cards/
@@ -106,15 +111,18 @@ The legal PDF files and generated model artifacts are intentionally not committe
 
 | Notebook | Purpose |
 | --- | --- |
-| Fine-tuning | LoRA supervised fine-tuning of Qwen2.5 3B |
-| GRPO | Reward-based post-training experiment |
-| RAG | Hybrid retrieval, reranking, generation, and study case |
-| M1 baseline | Deterministic benchmark runner for the reviewed evaluation set |
-| M2 retrieval | GPU ablation for BM25, dense, hybrid, and hybrid + reranker |
-| Retrieval calibration | GPU sweep for candidate depth, fusion weight, and abstention threshold |
-| Retrieval validation | GPU validation of the selected configuration and scope guard |
-| Grounded generation | GPU benchmark for structured answers, citations, and abstention |
-| Model comparison | Frozen-retrieval comparison of the base, SFT, and GRPO generators |
+| [`rag_pipeline_experiment.ipynb`](notebooks/rag_pipeline_experiment.ipynb) | Historical end-to-end RAG experiment |
+| [`supervised_fine_tuning.ipynb`](notebooks/supervised_fine_tuning.ipynb) | Historical LoRA supervised fine-tuning experiment |
+| [`grpo_training.ipynb`](notebooks/grpo_training.ipynb) | Historical reward-based post-training experiment |
+| [`baseline_evaluation.ipynb`](notebooks/baseline_evaluation.ipynb) | Deterministic baseline for the reviewed evaluation set |
+| [`retrieval_ablation.ipynb`](notebooks/retrieval_ablation.ipynb) | GPU comparison of BM25, dense, hybrid, and reranked retrieval |
+| [`retrieval_calibration.ipynb`](notebooks/retrieval_calibration.ipynb) | GPU sweep for chunking, fusion, and abstention settings |
+| [`retrieval_validation.ipynb`](notebooks/retrieval_validation.ipynb) | GPU validation of the selected retrieval configuration |
+| [`grounded_generation_benchmark.ipynb`](notebooks/grounded_generation_benchmark.ipynb) | Deterministic replay of grounded answers and abstentions |
+| [`model_comparison_benchmark.ipynb`](notebooks/model_comparison_benchmark.ipynb) | Frozen-retrieval comparison of base, SFT, and GRPO models |
+| [`demo_ui.ipynb`](notebooks/demo_ui.ipynb) | Colab launcher for the Gradio chat demo |
+| [`demo_cuda_validation.ipynb`](notebooks/demo_cuda_validation.ipynb) | Full CUDA, benchmark, and demo-flow validation |
+| [`demo_media_capture.ipynb`](notebooks/demo_media_capture.ipynb) | Release screenshot and video capture workflow |
 
 The notebooks were developed for a GPU-enabled Google Colab environment.
 
@@ -197,7 +205,7 @@ and reranked hybrid retrieval:
 python -m src.rag --device cuda
 ```
 
-For Google Colab, open `notebooks/M2_retrieval_ablation.ipynb`, select a T4
+For Google Colab, open `notebooks/retrieval_ablation.ipynb`, select a T4
 GPU or better, and run every cell.
 
 For a CPU-only smoke benchmark that does not load embedding models:
@@ -326,9 +334,9 @@ the application keeps the deterministic extractive fallback. See the
 [comparison review](eval/results/model-comparison/review.md) for the protocol,
 limitations, and training decision.
 
-### Run the M1 baseline in Colab
+### Run the historical baseline in Colab
 
-Open `notebooks/M1_baseline_evaluation.ipynb`, select a T4 GPU or better, and run every cell. The notebook installs the runtime dependencies, downloads the historical four-document corpus, validates the reviewed cases, and runs:
+Open `notebooks/baseline_evaluation.ipynb`, select a T4 GPU or better, and run every cell. The notebook installs the runtime dependencies, downloads the historical four-document corpus, validates the reviewed cases, and runs:
 
 ```bash
 python -m eval.run_baseline
