@@ -346,6 +346,13 @@ It writes `eval/results/baseline_report.json` and `eval/results/baseline_predict
 
 ## Run the Demo
 
+![Gradio demo showing a cited answer and a safe abstention](docs/assets/gradio-demo.gif)
+
+The recording exercises two reviewed flows: a worker employed for 22 days per
+month over three consecutive months receives cited evidence from PP Nomor 35
+Tahun 2021, while a request for the current Bandung minimum wage returns
+`insufficient_context` without inventing a source.
+
 Place the four historical PDFs listed in [the corpus documentation](docs/data-sources.md)
 under `data/raw/`, then start the Gradio application:
 
